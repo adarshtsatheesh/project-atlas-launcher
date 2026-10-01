@@ -321,8 +321,6 @@ fun HomeScreen(
                 notesCount = uiState.notes.size,
                 userTotalXp = uiState.userTotalXp,
                 claimedTodayXp = uiState.claimedTodayXp,
-                avatarConfig = uiState.avatarConfig,
-                avatarStyle = uiState.avatarStyle,
                 customAvatarPath = uiState.customAvatarPath,
                 identityTitle = uiState.identityTitle,
                 identityVocation = uiState.identityVocation,
@@ -330,12 +328,11 @@ fun HomeScreen(
                 nextEvolutionTitle = uiState.nextEvolutionTitle,
                 momentumDays = uiState.momentumDays,
                 onClaimXp = { viewModel.claimTodayXp(it) },
-                onUpdateAvatarConfig = { viewModel.updateAvatarConfig(it) },
-                onUpdateAvatarStyle = { viewModel.setAvatarStyle(it) },
                 onUpdateIdentityTitle = { viewModel.setIdentityTitle(it) },
                 onUpdateProfileName = { viewModel.setProfileName(it) },
                 onUploadCustomAvatar = { viewModel.setCustomAvatarFromUri(it) },
-                onClearCustomAvatar = { viewModel.clearCustomAvatar() },
+                onCaptureCustomAvatarBitmap = { viewModel.setProfilePhotoFromBitmap(it) },
+                onClearCustomAvatar = { viewModel.removeProfilePhoto() },
                 onContinueMission = { mission ->
                     viewModel.closeFutureDashboard()
                     if (mission != null) {
@@ -395,8 +392,6 @@ fun HomeScreen(
                 notesCount = uiState.notes.size,
                 userTotalXp = uiState.userTotalXp,
                 claimedTodayXp = uiState.claimedTodayXp,
-                avatarConfig = uiState.avatarConfig,
-                avatarStyle = uiState.avatarStyle,
                 customAvatarPath = uiState.customAvatarPath,
                 identityTitle = uiState.identityTitle,
                 identityVocation = uiState.identityVocation,
@@ -404,12 +399,11 @@ fun HomeScreen(
                 nextEvolutionTitle = uiState.nextEvolutionTitle,
                 momentumDays = uiState.momentumDays,
                 onClaimXp = { viewModel.claimTodayXp(it) },
-                onUpdateAvatarConfig = { viewModel.updateAvatarConfig(it) },
-                onUpdateAvatarStyle = { viewModel.setAvatarStyle(it) },
                 onUpdateIdentityTitle = { viewModel.setIdentityTitle(it) },
                 onUpdateProfileName = { viewModel.setProfileName(it) },
                 onUploadCustomAvatar = { viewModel.setCustomAvatarFromUri(it) },
-                onClearCustomAvatar = { viewModel.clearCustomAvatar() },
+                onCaptureCustomAvatarBitmap = { viewModel.setProfilePhotoFromBitmap(it) },
+                onClearCustomAvatar = { viewModel.removeProfilePhoto() },
                 onContinueMission = { mission ->
                     viewModel.closeProgress()
                     if (mission != null) {
@@ -457,11 +451,9 @@ fun HomeScreen(
                 selectedWallpaper = uiState.selectedWallpaper,
                 customWallpaperPath = uiState.customWallpaperPath,
                 wallpaperDim = uiState.wallpaperDim,
-                avatarConfig = uiState.avatarConfig,
-                userLevel = (uiState.userTotalXp / 100) + 1,
-                onUpdateAvatarConfig = { viewModel.updateAvatarConfig(it) },
-                onRegenerateAvatarUri = { viewModel.setCustomAvatarFromUri(it) },
-                onResetAvatar = { viewModel.resetAvatar() },
+                profilePhotoPath = uiState.customAvatarPath,
+                onUploadProfilePhotoUri = { viewModel.setCustomAvatarFromUri(it) },
+                onRemoveProfilePhoto = { viewModel.removeProfilePhoto() },
                 onSelectClockStyle = { viewModel.setClockStyle(it) },
                 onToggleClockStyle = { viewModel.toggleClockStyle() },
                 onUpdateProfileName = { viewModel.setProfileName(it) },
@@ -521,14 +513,11 @@ fun HomeScreen(
             ) {
                 OnboardingSheet(
                     currentTitle = uiState.identityTitle,
-                    currentStyle = uiState.avatarStyle,
-                    avatarConfig = uiState.avatarConfig,
-                    customSelfiePath = uiState.customAvatarPath,
+                    customProfilePhotoPath = uiState.customAvatarPath,
                     onSelectTitle = { viewModel.setIdentityTitle(it) },
-                    onSelectStyle = { viewModel.setAvatarStyle(it) },
-                    onUpdateAvatarConfig = { viewModel.updateAvatarConfig(it) },
-                    onUploadSelfie = { viewModel.setCustomAvatarFromUri(it) },
-                    onClearSelfie = { viewModel.clearCustomAvatar() },
+                    onUploadProfilePhotoUri = { viewModel.setCustomAvatarFromUri(it) },
+                    onCaptureProfilePhotoBitmap = { viewModel.setProfilePhotoFromBitmap(it) },
+                    onClearProfilePhoto = { viewModel.removeProfilePhoto() },
                     onCompleteOnboarding = { name, vocation ->
                         viewModel.completeOnboarding(name, vocation)
                     },
