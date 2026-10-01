@@ -1,4 +1,4 @@
-# Project Atlas
+# Project Atlas...
 
 > Turning intention into action.
 
