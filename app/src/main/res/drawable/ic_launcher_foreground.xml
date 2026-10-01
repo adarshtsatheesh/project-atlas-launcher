@@ -1,0 +1,25 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Centered within 66dp safe zone (21..87) -->
+    <!-- Distinctive geometric A / Delta / Compass Arrow -->
+    <path
+        android:pathData="M54,30 L74,74 L63.5,74 L58.5,62 L49.5,62 L44.5,74 L34,74 Z M54,45 L51.5,54 L56.5,54 Z"
+        android:fillColor="#FFFFFF" />
+    <!-- Focus Horizon Bar & Momentum Pulse Dot -->
+    <path
+        android:pathData="M31,68 L41,68"
+        android:strokeColor="#7FA28C"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M67,68 L77,68"
+        android:strokeColor="#7FA28C"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M54,23m-2.5,0a2.5,2.5 0 1,0 5,0a2.5,2.5 0 1,0 -5,0"
+        android:fillColor="#7FA28C" />
+</vector>
