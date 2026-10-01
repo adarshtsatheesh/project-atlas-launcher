@@ -1,0 +1,8 @@
+{
+  "name": "Remix Atlas",
+  "description": "An execution-first Android launcher designed to bridge the gap between planning and doing with a calm home screen, active mission card, focus mode, and distraction-free app drawer.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
