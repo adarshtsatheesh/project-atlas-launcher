@@ -1,6 +1,15 @@
 package com.example.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
@@ -29,9 +38,11 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material.icons.outlined.Timer
+import androidx.compose.material.icons.outlined.Widgets
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -48,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -76,6 +88,8 @@ fun TodayMissionTaskConsole(
     onSetAsMission: (Long) -> Unit,
     onQuickAddTask: (String) -> Unit,
     onOpenCalendarPlanner: () -> Unit,
+    isEditMode: Boolean = false,
+    onEditWidget: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showQuickAdd by remember { mutableStateOf(false) }
@@ -86,13 +100,41 @@ fun TodayMissionTaskConsole(
         activeMission ?: tasks.firstOrNull { !it.isCompleted }
     }
 
+    val widgetScale by animateFloatAsState(
+        targetValue = if (isEditMode) 0.97f else 1.0f,
+        animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow),
+        label = "widget_scale"
+    )
+
+    val infiniteTransition = rememberInfiniteTransition(label = "widget_wobble")
+    val wobbleOffsetY by infiniteTransition.animateFloat(
+        initialValue = if (isEditMode) -1.2f else 0f,
+        targetValue = if (isEditMode) 1.2f else 0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "wobble_y"
+    )
+
+    val accent = com.example.ui.theme.LocalAtlasAccent.current
+
     Box(
         modifier = modifier
+            .graphicsLayer {
+                scaleX = widgetScale
+                scaleY = widgetScale
+                translationY = wobbleOffsetY
+            }
             .fillMaxWidth()
             .padding(horizontal = 24.dp)
             .clip(RoundedCornerShape(26.dp))
             .background(GlassCardBackgroundBrush)
-            .border(1.dp, GlassBorderBrush, RoundedCornerShape(26.dp))
+            .border(
+                if (isEditMode) 1.5.dp else 1.dp,
+                if (isEditMode) androidx.compose.ui.graphics.SolidColor(accent.copy(alpha = 0.6f)) else GlassBorderBrush,
+                RoundedCornerShape(26.dp)
+            )
             .pointerInput(Unit) {
                 detectTapGestures(
                     onDoubleTap = {
@@ -104,6 +146,40 @@ fun TodayMissionTaskConsole(
             .testTag("today_mission_task_console")
     ) {
         Column {
+            if (isEditMode) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(accent.copy(alpha = 0.2f))
+                            .border(1.dp, accent.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                            .clickable { onEditWidget() }
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Dashboard,
+                            contentDescription = "Edit Widget",
+                            tint = Color.White,
+                            modifier = Modifier.size(12.dp)
+                        )
+                        Text(
+                            text = "Widget",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 10.sp
+                            ),
+                            color = Color.White
+                        )
+                    }
+                }
+            }
             // Header Row: TODAY'S FOCUS, task count, Calendar button & Quick Add
             Row(
                 modifier = Modifier.fillMaxWidth(),

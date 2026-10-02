@@ -99,7 +99,10 @@ import com.example.ui.theme.SoftSageGreen
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPureWhite
 import com.example.ui.theme.TextSecondary
+import com.example.BuildConfig
 import com.example.ui.viewmodel.ClockStyle
+import com.example.ui.viewmodel.CoachTone
+import com.example.ui.viewmodel.FocusPreset
 import com.example.util.LockScreenManager
 
 @Composable
@@ -114,6 +117,8 @@ fun SettingsScreen(
     aiNudgesEnabled: Boolean = true,
     ambientSoundEnabled: Boolean = true,
     exitFrictionEnabled: Boolean = true,
+    coachTone: CoachTone = CoachTone.BALANCED,
+    defaultFocusPreset: FocusPreset = FocusPreset.POMODORO_25,
     selectedWallpaper: BuiltInWallpaper = BuiltInWallpaper.OBSIDIAN_VOID,
     customWallpaperPath: String? = null,
     wallpaperDim: Float = 0.35f,
@@ -131,6 +136,9 @@ fun SettingsScreen(
     onToggleAiNudges: (Boolean) -> Unit = {},
     onToggleAmbientSound: (Boolean) -> Unit = {},
     onToggleExitFriction: (Boolean) -> Unit = {},
+    onCycleCoachTone: () -> Unit = {},
+    onCycleDefaultFocusPreset: () -> Unit = {},
+    onOpenAiCoach: () -> Unit = {},
     onSelectWallpaper: (BuiltInWallpaper) -> Unit = {},
     onPickCustomWallpaperUri: (Uri) -> Unit = {},
     onUpdateWallpaperDim: (Float) -> Unit = {},
@@ -719,7 +727,7 @@ fun SettingsScreen(
             ) {
                 SettingsSwitchRow(
                     title = "Proactive Micro-Step Breakdown",
-                    subtitle = "Automatically splits big tasks into 3 actionable sub-actions",
+                    subtitle = "Asks Gemini for 3 first steps when you set a mission",
                     checked = aiNudgesEnabled,
                     testTagKey = "settings_ai_nudges_switch",
                     onCheckedChange = { onToggleAiNudges(it) }
@@ -727,7 +735,16 @@ fun SettingsScreen(
                 SettingsDivider()
                 SettingsNavigationRow(
                     title = "Coaching Sensitivity",
-                    subtitle = "Gentle Momentum"
+                    subtitle = "${coachTone.label} • tap to change",
+                    testTagKey = "settings_coach_tone_row",
+                    onClick = { onCycleCoachTone() }
+                )
+                SettingsDivider()
+                SettingsNavigationRow(
+                    title = "Open AI Coach",
+                    subtitle = "Ask Atlas to break, plan or refocus",
+                    testTagKey = "settings_open_ai_coach",
+                    onClick = { onOpenAiCoach() }
                 )
             }
 
@@ -746,12 +763,14 @@ fun SettingsScreen(
             ) {
                 SettingsNavigationRow(
                     title = "Default Focus Sprint",
-                    subtitle = "25 minutes"
+                    subtitle = "${defaultFocusPreset.minutes} minutes • ${defaultFocusPreset.label} • tap to change",
+                    testTagKey = "settings_default_focus_row",
+                    onClick = { onCycleDefaultFocusPreset() }
                 )
                 SettingsDivider()
                 SettingsSwitchRow(
                     title = "Ambient Lo-fi Audio",
-                    subtitle = "Calming focus soundscapes",
+                    subtitle = "Calming procedural soundscapes played during focus",
                     checked = ambientSoundEnabled,
                     testTagKey = "settings_ambient_sound_switch",
                     onCheckedChange = { onToggleAmbientSound(it) }
@@ -788,7 +807,7 @@ fun SettingsScreen(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Version 1.0.0 (Production Release)",
+                    text = "Version ${BuildConfig.VERSION_NAME}",
                     style = MaterialTheme.typography.bodySmall,
                     color = TextSecondary
                 )

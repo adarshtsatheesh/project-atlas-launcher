@@ -124,20 +124,20 @@ object ThemeManager {
     }
 
     /**
-     * Builds specular glassmorphic background brush reflecting transparency and accent.
+     * Builds specular liquid glassmorphic background brush reflecting ultra-translucent glass.
      */
     fun getCardBackgroundBrush(
         accentColor: Color,
-        cardTransparency: Int = 15,
+        cardTransparency: Int = 12,
         themeMode: ThemeMode = ThemeMode.AMOLED_BLACK
     ): Brush {
-        val alphaBase = (cardTransparency / 100f).coerceIn(0.05f, 0.90f)
+        val alphaBase = (cardTransparency / 100f).coerceIn(0.06f, 0.40f)
         val isLight = themeMode == ThemeMode.LIGHT
         return if (isLight) {
             Brush.linearGradient(
                 colors = listOf(
-                    Color.White.copy(alpha = 1f - alphaBase * 0.4f),
-                    Color(0xFFF1F5F9).copy(alpha = 1f - alphaBase * 0.4f)
+                    Color.White.copy(alpha = 0.85f),
+                    Color(0xFFF2F2F7).copy(alpha = 0.75f)
                 ),
                 start = Offset(0f, 0f),
                 end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
@@ -145,8 +145,8 @@ object ThemeManager {
         } else {
             Brush.linearGradient(
                 colors = listOf(
-                    Color(0xFF12141A).copy(alpha = alphaBase + 0.15f),
-                    Color(0xFF07080C).copy(alpha = alphaBase + 0.10f)
+                    Color(0xFF242732).copy(alpha = alphaBase),
+                    Color(0xFF101218).copy(alpha = alphaBase * 0.75f)
                 ),
                 start = Offset(0f, 0f),
                 end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
@@ -155,14 +155,14 @@ object ThemeManager {
     }
 
     /**
-     * Builds subtle glowing border brush with specular light edge.
+     * Builds hairline subtle liquid glass reflection border brush (Apple visionOS inspired).
      */
     fun getBorderBrush(accentColor: Color): Brush {
         return Brush.linearGradient(
             colors = listOf(
-                Color(0x55FFFFFF),
-                Color(0x1AFFFFFF),
-                accentColor.copy(alpha = 0.50f)
+                Color(0x30FFFFFF),
+                Color(0x10FFFFFF),
+                Color(0x20FFFFFF)
             ),
             start = Offset(0f, 0f),
             end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)

@@ -19,8 +19,14 @@ import com.example.domain.model.ColorPalette
 import com.example.ui.appearance.*
 import com.example.util.AtlasWallpaperSynchronizer
 import com.example.util.ProfilePhotoProcessor
+import com.example.util.GeminiClient
+import com.example.util.WeatherService
 import java.io.File
 import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -65,6 +71,11 @@ class LauncherViewModel(
             identityVocation = loadSavedIdentityVocation(),
             isOnboardingOpen = !loadOnboardingCompleted(),
             userTotalXp = loadSavedTotalXp(),
+            claimedTodayXp = hasClaimedToday(),
+            momentumDays = computeMomentum(loadSavedActiveDays()).coerceAtLeast(1),
+            unlockedBadges = loadUnlockedBadges(),
+            coachTone = loadSavedCoachTone(),
+            defaultFocusPreset = loadSavedDefaultFocusPreset(),
             appearanceState = loadSavedAppearance()
         )
     )
@@ -174,6 +185,150 @@ class LauncherViewModel(
 
     private fun loadSavedTotalXp(): Int {
         return prefs?.getInt("user_total_xp", 0) ?: 0
+    }
+
+    // ------------------------------------------------------------------
+    // Real progression: daily claim, momentum streak & badge unlocks
+    // ------------------------------------------------------------------
+
+    private fun dayKey(timeInMillis: Long = System.currentTimeMillis()): String =
+        SimpleDateFormat("yyyyMMdd", Locale.US).format(Date(timeInMillis))
+
+    private fun hasClaimedToday(): Boolean =
+        prefs?.getString("last_xp_claim_date", null) == dayKey()
+
+    private fun loadSavedActiveDays(): Set<String> =
+        prefs?.getString("active_days", "")
+            ?.split(',')
+            ?.mapNotNull { it.trim().takeIf { token -> token.isNotEmpty() } }
+            ?.toSet()
+            ?: emptySet()
+
+    /**
+     * Consecutive days with at least one real action (task completed, focus logged,
+     * daily XP claimed), counted back from today (or yesterday when today is still open).
+     */
+    private fun computeMomentum(days: Set<String>): Int {
+        if (days.isEmpty()) return 0
+        val format = SimpleDateFormat("yyyyMMdd", Locale.US)
+        val cursor = Calendar.getInstance()
+        if (!days.contains(format.format(cursor.time))) {
+            cursor.add(Calendar.DAY_OF_YEAR, -1)
+            if (!days.contains(format.format(cursor.time))) return 0
+        }
+        var streak = 0
+        while (days.contains(format.format(cursor.time))) {
+            streak++
+            cursor.add(Calendar.DAY_OF_YEAR, -1)
+        }
+        return streak
+    }
+
+    private fun loadUnlockedBadges(): Set<String> =
+        prefs?.getString("unlocked_badges", null)
+            ?.split(',')
+            ?.mapNotNull { it.trim().takeIf { token -> token.isNotEmpty() } }
+            ?.toSet()
+            ?.ifEmpty { setOf("first_step") }
+            ?: setOf("first_step")
+
+    private fun unlockBadge(id: String) {
+        val current = _uiState.value.unlockedBadges
+        if (id in current) return
+        val updated = current + id
+        _uiState.update { it.copy(unlockedBadges = updated) }
+        prefs?.edit()?.putString("unlocked_badges", updated.joinToString(","))?.apply()
+    }
+
+    /** Awards XP for real actions and persists the new total. */
+    private fun awardXp(amount: Int) {
+        if (amount <= 0) return
+        val newXp = _uiState.value.userTotalXp + amount
+        _uiState.update { it.copy(userTotalXp = newXp) }
+        prefs?.edit()?.putInt("user_total_xp", newXp)?.apply()
+        if (newXp >= 500) unlockBadge("xp_500")
+    }
+
+    /** Marks today as an active day, recomputes the streak and unlocks streak badges. */
+    private fun markActiveDay() {
+        val days = loadSavedActiveDays().toMutableSet()
+        days.add(dayKey())
+        prefs?.edit()?.putString("active_days", days.joinToString(","))?.apply()
+        val streak = computeMomentum(days).coerceAtLeast(1)
+        _uiState.update { it.copy(momentumDays = streak) }
+        if (streak >= 7) unlockBadge("streak_7")
+        if (streak >= 30) unlockBadge("streak_30")
+    }
+
+    private fun loadSavedCoachTone(): CoachTone {
+        val saved = prefs?.getString("coach_tone", null) ?: return CoachTone.BALANCED
+        return try {
+            CoachTone.valueOf(saved)
+        } catch (e: Exception) {
+            CoachTone.BALANCED
+        }
+    }
+
+    private fun loadSavedDefaultFocusPreset(): FocusPreset {
+        val saved = prefs?.getString("default_focus_preset", null) ?: return FocusPreset.POMODORO_25
+        return try {
+            FocusPreset.valueOf(saved)
+        } catch (e: Exception) {
+            FocusPreset.POMODORO_25
+        }
+    }
+
+    /** Cycles the Gemini coaching tone (Gentle -> Balanced -> Direct). */
+    fun cycleCoachTone() {
+        val next = when (_uiState.value.coachTone) {
+            CoachTone.GENTLE -> CoachTone.BALANCED
+            CoachTone.BALANCED -> CoachTone.DIRECT
+            CoachTone.DIRECT -> CoachTone.GENTLE
+        }
+        _uiState.update { it.copy(coachTone = next) }
+        prefs?.edit()?.putString("coach_tone", next.name)?.apply()
+    }
+
+    /** Cycles the default focus sprint length used when entering Focus Mode. */
+    fun cycleDefaultFocusPreset() {
+        val entries = FocusPreset.entries
+        val next = entries[(_uiState.value.defaultFocusPreset.ordinal + 1) % entries.size]
+        _uiState.update { it.copy(defaultFocusPreset = next) }
+        prefs?.edit()?.putString("default_focus_preset", next.name)?.apply()
+    }
+
+    /** Loads cached weather instantly, then refreshes it from the network. */
+    private fun loadWeather() {
+        val ctx = context ?: return
+        val cached = WeatherService.loadCached(ctx)
+        if (cached != null) {
+            _uiState.update { it.copy(weather = cached) }
+        }
+        viewModelScope.launch {
+            val fresh = WeatherService.fetch(ctx)
+            if (fresh != null) {
+                _uiState.update { it.copy(weather = fresh) }
+            }
+        }
+    }
+
+    /**
+     * "Proactive Micro-Step Breakdown": when enabled, setting a task as the mission
+     * asks Gemini for 3 concrete first steps if the task has none yet.
+     */
+    private fun maybeGenerateMissionSteps(taskId: Long) {
+        if (!_uiState.value.aiNudgesEnabled) return
+        if (!GeminiClient.isConfigured) return
+        viewModelScope.launch {
+            try {
+                val task = taskRepository.getTask(taskId) ?: return@launch
+                if (task.microStepsRaw.isNotBlank()) return@launch
+                val steps = GeminiClient.suggestMicroSteps(task.title, task.description)
+                steps.forEach { step -> taskRepository.addMicroStepById(taskId, step) }
+            } catch (e: Exception) {
+                // AI is best-effort: never block the mission flow on a network failure
+            }
+        }
     }
 
     private fun loadSavedAppearance(): AppearanceState {
@@ -357,6 +512,9 @@ class LauncherViewModel(
                 customImagePath = _uiState.value.customWallpaperPath
             )
         }
+
+        // Real weather for the clock header (cached + refreshed on launch)
+        loadWeather()
     }
 
     // Gesture & Screen Navigation Handlers
@@ -556,11 +714,37 @@ class LauncherViewModel(
     }
 
     fun openAppearanceStudio() {
-        _uiState.update { it.copy(isAppearanceStudioOpen = true) }
+        openEditMode(EditCategory.THEME)
     }
 
     fun closeAppearanceStudio() {
-        _uiState.update { it.copy(isAppearanceStudioOpen = false) }
+        closeEditMode()
+    }
+
+    fun openEditMode(category: EditCategory? = null) {
+        _uiState.update {
+            it.copy(
+                isEditMode = true,
+                isSettingsOpen = false,
+                isAppearanceStudioOpen = false,
+                activeEditCategory = category ?: EditCategory.WALLPAPER
+            )
+        }
+    }
+
+    fun closeEditMode() {
+        _uiState.update {
+            it.copy(
+                isEditMode = false,
+                activeEditCategory = null
+            )
+        }
+    }
+
+    fun setEditCategory(category: EditCategory?) {
+        _uiState.update {
+            it.copy(activeEditCategory = category)
+        }
     }
 
     fun updateAppearance(transform: (AppearanceState) -> AppearanceState) {
@@ -712,11 +896,23 @@ class LauncherViewModel(
         viewModelScope.launch {
             taskRepository.setMission(taskId)
         }
+        maybeGenerateMissionSteps(taskId)
     }
 
     fun toggleTaskCompletion(task: TaskEntity) {
+        val completing = !task.isCompleted
         viewModelScope.launch {
             taskRepository.toggleTaskCompletion(task)
+            if (completing) {
+                awardXp(if (task.isMission) 100 else 20)
+                markActiveDay()
+                unlockBadge("first_mission")
+                // End-of-day badge: every task scheduled for today is done
+                val othersToday = _uiState.value.todayTasks.filter { it.id != task.id }
+                if (othersToday.isNotEmpty() && othersToday.all { it.isCompleted }) {
+                    unlockBadge("night_warrior")
+                }
+            }
         }
     }
 
@@ -728,7 +924,7 @@ class LauncherViewModel(
 
     fun addMicroStep(task: TaskEntity, stepText: String) {
         viewModelScope.launch {
-            taskRepository.addMicroStep(task, stepText)
+            taskRepository.addMicroStepById(task.id, stepText)
         }
     }
 
@@ -921,7 +1117,7 @@ class LauncherViewModel(
         asMission: Boolean = false
     ) {
         viewModelScope.launch {
-            taskRepository.createTask(
+            val id = taskRepository.createTask(
                 title = title,
                 description = description,
                 priority = priority,
@@ -930,6 +1126,9 @@ class LauncherViewModel(
                 scheduledDate = scheduledDate,
                 asMission = asMission
             )
+            if (asMission) {
+                maybeGenerateMissionSteps(id)
+            }
         }
     }
 
@@ -947,7 +1146,7 @@ class LauncherViewModel(
 
     // Focus Mode Actions
     fun startFocusMode(preset: FocusPreset? = null) {
-        val selectedPreset = preset ?: _uiState.value.selectedFocusModePreset
+        val selectedPreset = preset ?: _uiState.value.defaultFocusPreset
         val durationSeconds = selectedPreset.minutes * 60
         _uiState.update {
             it.copy(
@@ -1012,6 +1211,12 @@ class LauncherViewModel(
                     taskRepository.addFocusMinutes(mission.id, actualDuration / 60)
                 }
             }
+            // Real rewards: 1 XP per focus minute + streak + dawn badge
+            awardXp(actualDuration / 60)
+            markActiveDay()
+            if (Calendar.getInstance().get(Calendar.HOUR_OF_DAY) < 8) {
+                unlockBadge("early_bird")
+            }
         }
 
         _uiState.update {
@@ -1066,14 +1271,10 @@ class LauncherViewModel(
 
     fun claimTodayXp(amount: Int = 140) {
         if (_uiState.value.claimedTodayXp) return
-        val newXp = _uiState.value.userTotalXp + amount
-        _uiState.update {
-            it.copy(
-                userTotalXp = newXp,
-                claimedTodayXp = true
-            )
-        }
-        prefs?.edit()?.putInt("user_total_xp", newXp)?.apply()
+        prefs?.edit()?.putString("last_xp_claim_date", dayKey())?.apply()
+        _uiState.update { it.copy(claimedTodayXp = true) }
+        awardXp(amount)
+        markActiveDay()
     }
 
     fun setCustomAvatarFromUri(uri: Uri, onComplete: (Boolean) -> Unit = {}) {

@@ -9,11 +9,19 @@ import com.example.domain.model.BuiltInWallpaper
 import com.example.domain.model.ColorPalette
 import com.example.ui.appearance.AppearanceState
 import com.example.util.DateUtils
+import com.example.util.WeatherSnapshot
 
 enum class ClockStyle(val label: String) {
     NEO_GLASS("Neo Glass"),
     STACKED_DIGITAL("Stacked Lockscreen"),
     CHRONOGRAPH("Glass Chrono")
+}
+
+/** Tone of the Gemini coach, passed into the model's system instruction. */
+enum class CoachTone(val label: String, val instruction: String) {
+    GENTLE("Gentle", "Warm, encouraging and forgiving. Celebrate small wins."),
+    BALANCED("Balanced", "Calm, pragmatic and encouraging without being soft."),
+    DIRECT("Direct", "Blunt, high-accountability and no-nonsense. Skip the cushioning.")
 }
 
 enum class MockupScreen(val title: String, val subtitle: String) {
@@ -31,6 +39,21 @@ enum class IdentityTitle(val label: String, val subtitle: String) {
     THE_STRATEGIST("The Strategist", "Navigating long horizons with steady will."),
     THE_CREATOR("The Creator", "Synthesizing thoughts into tangible reality."),
     THE_COMMANDER("The Commander", "Total sovereignty over time and focus.")
+}
+
+enum class EditCategory(val label: String) {
+    WALLPAPER("Wallpaper"),
+    APPEARANCE("Appearance"),
+    TYPOGRAPHY("Typography"),
+    ICONS("Icons"),
+    CLOCK("Clock"),
+    WIDGETS("Widgets");
+
+    companion object {
+        val THEME get() = APPEARANCE
+        val FONT get() = TYPOGRAPHY
+        val LAYOUT get() = WIDGETS
+    }
 }
 
 data class LauncherUiState(
@@ -61,6 +84,8 @@ data class LauncherUiState(
     val isAiCoachOpen: Boolean = false,
     val isSettingsOpen: Boolean = false,
     val isAppearanceStudioOpen: Boolean = false,
+    val isEditMode: Boolean = false,
+    val activeEditCategory: EditCategory? = null,
     val appearanceState: AppearanceState = AppearanceState(),
     val isAmbientLockOpen: Boolean = false,
     val isOnboardingOpen: Boolean = false,
@@ -82,10 +107,14 @@ data class LauncherUiState(
     val aiNudgesEnabled: Boolean = true,
     val ambientSoundEnabled: Boolean = true,
     val exitFrictionEnabled: Boolean = true,
+    val coachTone: CoachTone = CoachTone.BALANCED,
+    val defaultFocusPreset: FocusPreset = FocusPreset.POMODORO_25,
     // Wallpaper & Atmosphere
     val selectedWallpaper: BuiltInWallpaper = BuiltInWallpaper.OBSIDIAN_VOID,
     val customWallpaperPath: String? = null,
     val wallpaperDim: Float = 0.35f,
+    // Live local weather for the clock header (null until first fetch)
+    val weather: WeatherSnapshot? = null,
     // Evolution & Identity System
     val customAvatarPath: String? = null,
     val identityTitle: IdentityTitle = IdentityTitle.THE_ARCHITECT,
@@ -107,6 +136,38 @@ data class LauncherUiState(
 ) {
     val todayFocusMinutes: Int
         get() = todayFocusSeconds / 60
+
+    /**
+     * Real user context injected into every Gemini request so coaching is specific
+     * to the current mission, streak and daily numbers instead of generic.
+     */
+    val coachContext: String
+        get() = buildString {
+            appendLine("Coaching tone: ${coachTone.instruction}")
+            appendLine(
+                "User: $profileName. Identity: ${identityTitle.label}. " +
+                    "Momentum streak: $momentumDays days. Total XP: $userTotalXp."
+            )
+            appendLine(
+                "Today: $todayFocusMinutes minutes of focus, $todayCompletedCount tasks completed."
+            )
+            val mission = activeMission
+            if (mission != null) {
+                append("Active mission: ${mission.title}.")
+                if (mission.description.isNotBlank()) {
+                    append(" Details: ${mission.description}")
+                }
+                val steps = mission.getMicroSteps()
+                if (steps.isNotEmpty()) {
+                    append(" Micro-steps: ")
+                    append(steps.joinToString(" | ") { (text, done) ->
+                        (if (done) "[done] " else "[open] ") + text
+                    })
+                }
+            } else {
+                append("No active mission yet.")
+            }
+        }
 
     companion object {
         fun computeTodayTasks(active: List<TaskEntity>, completed: List<TaskEntity>): List<TaskEntity> {

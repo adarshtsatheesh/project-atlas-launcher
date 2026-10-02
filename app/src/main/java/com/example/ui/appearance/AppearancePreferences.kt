@@ -1,11 +1,13 @@
 package com.example.ui.appearance
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import com.example.R
 
 /**
  * Available Typography Typefaces.
- * All fonts are downloaded and bundled locally as static .ttf resources in res/font/.
+ * All fonts are downloaded and bundled locally as static .ttf resources in res/font/,
+ * or mapped to clean system/modern typography fallbacks.
  */
 enum class AppFontFamily(
     val id: String,
@@ -21,11 +23,11 @@ enum class AppFontFamily(
         subtitle = "Geometric monospace-infused modern sans",
         isDefault = true
     ),
-    GEIST(
-        id = "geist",
-        label = "Geist",
-        fontResId = R.font.geist,
-        subtitle = "Engineered for developers, ultra-minimal & precise"
+    SATOSHI(
+        id = "satoshi",
+        label = "Satoshi",
+        fontResId = R.font.plus_jakarta_sans,
+        subtitle = "Clean geometric modernist sans"
     ),
     INTER(
         id = "inter",
@@ -33,29 +35,35 @@ enum class AppFontFamily(
         fontResId = R.font.inter,
         subtitle = "World-class digital interface typography"
     ),
+    GEIST(
+        id = "geist",
+        label = "Geist",
+        fontResId = R.font.geist,
+        subtitle = "Engineered for developers, ultra-minimal & precise"
+    ),
+    SF_PRO(
+        id = "sf_pro",
+        label = "SF Pro",
+        fontResId = R.font.inter,
+        subtitle = "Iconic Apple system design typography"
+    ),
+    JETBRAINS_MONO(
+        id = "jetbrains_mono",
+        label = "JetBrains Mono",
+        fontResId = R.font.jetbrains_mono,
+        subtitle = "Crafted for developer focus, code & execution"
+    ),
+    POPPINS(
+        id = "poppins",
+        label = "Poppins",
+        fontResId = R.font.poppins,
+        subtitle = "Geometric friendly rounded sans"
+    ),
     MANROPE(
         id = "manrope",
         label = "Manrope",
         fontResId = R.font.manrope,
         subtitle = "Modern semi-rounded geometric sans"
-    ),
-    SORA(
-        id = "sora",
-        label = "Sora",
-        fontResId = R.font.sora,
-        subtitle = "Futuristic aesthetic with distinctive architectural cuts"
-    ),
-    OUTFIT(
-        id = "outfit",
-        label = "Outfit",
-        fontResId = R.font.outfit,
-        subtitle = "Clean, friendly & contemporary geometric typeface"
-    ),
-    IBM_PLEX_SANS(
-        id = "ibm_plex_sans",
-        label = "IBM Plex Sans",
-        fontResId = R.font.ibm_plex_sans,
-        subtitle = "Industrial design heritage, neutral & razor-sharp"
     ),
     PLUS_JAKARTA_SANS(
         id = "plus_jakarta_sans",
@@ -63,18 +71,72 @@ enum class AppFontFamily(
         fontResId = R.font.plus_jakarta_sans,
         subtitle = "Refined contemporary neo-grotesque sans"
     ),
+    OUTFIT(
+        id = "outfit",
+        label = "Outfit",
+        fontResId = R.font.outfit,
+        subtitle = "Clean, friendly & contemporary geometric typeface"
+    ),
+    SORA(
+        id = "sora",
+        label = "Sora",
+        fontResId = R.font.sora,
+        subtitle = "Futuristic aesthetic with architectural cuts"
+    ),
+    IBM_PLEX_SANS(
+        id = "ibm_plex_sans",
+        label = "IBM Plex Sans",
+        fontResId = R.font.ibm_plex_sans,
+        subtitle = "Industrial design heritage, neutral & razor-sharp"
+    ),
+    GENERAL_SANS(
+        id = "general_sans",
+        label = "General Sans",
+        fontResId = R.font.plus_jakarta_sans,
+        subtitle = "Contemporary grotesque with refined balance"
+    ),
+    CLASH_GROTESK(
+        id = "clash_grotesk",
+        label = "Clash Grotesk",
+        fontResId = R.font.space_grotesk,
+        subtitle = "Bold architectural contrast display typeface"
+    ),
     DM_SANS(
         id = "dm_sans",
         label = "DM Sans",
         fontResId = R.font.dm_sans,
         subtitle = "Low-contrast geometric sans optimized for screens"
-    ),
-    JETBRAINS_MONO(
-        id = "jetbrains_mono",
-        label = "JetBrains Mono",
-        fontResId = R.font.jetbrains_mono,
-        subtitle = "Crafted for developer focus, code & execution"
     )
+}
+
+/**
+ * Font Scale Options.
+ */
+enum class FontSizeScale(val label: String, val scale: Float) {
+    SMALL("Small", 0.88f),
+    DEFAULT("Default", 1.0f),
+    LARGE("Large", 1.14f),
+    EXTRA_LARGE("Extra Large", 1.28f)
+}
+
+/**
+ * Line Height Options.
+ */
+enum class LineHeightOption(val label: String, val multiplier: Float) {
+    TIGHT("Tight", 0.92f),
+    NORMAL("Normal", 1.0f),
+    RELAXED("Relaxed", 1.20f)
+}
+
+/**
+ * Font Boldness Options.
+ */
+enum class FontBoldnessOption(val label: String, val weight: FontWeight) {
+    NORMAL("Regular", FontWeight.Normal),
+    MEDIUM("Medium", FontWeight.Medium),
+    SEMIBOLD("SemiBold", FontWeight.SemiBold),
+    BOLD("Bold", FontWeight.Bold),
+    EXTRA_BOLD("ExtraBold", FontWeight.ExtraBold)
 }
 
 /**
@@ -89,7 +151,152 @@ enum class ThemeMode(val label: String, val description: String) {
 }
 
 /**
- * Accent Color Presets.
+ * Theme Color Presets with complete palette sets.
+ */
+enum class ThemeColorPreset(
+    val id: String,
+    val label: String,
+    val hexCode: String,
+    val primaryColor: Color,
+    val backgroundColor: Color,
+    val cardColor: Color,
+    val glowColor: Color,
+    val borderColor: Color
+) {
+    AMOLED_BLACK(
+        id = "amoled_black",
+        label = "AMOLED Black",
+        hexCode = "#FF2A4D",
+        primaryColor = Color(0xFFFF2A4D),
+        backgroundColor = Color(0xFF000000),
+        cardColor = Color(0xFF0D0E12),
+        glowColor = Color(0xFFFF2A4D),
+        borderColor = Color(0x33FF2A4D)
+    ),
+    STEALTHICS_CYAN(
+        id = "stealthics_cyan",
+        label = "Stealthics Cyan",
+        hexCode = "#00F0FF",
+        primaryColor = Color(0xFF00F0FF),
+        backgroundColor = Color(0xFF030A10),
+        cardColor = Color(0xFF071822),
+        glowColor = Color(0xFF00F0FF),
+        borderColor = Color(0x3300F0FF)
+    ),
+    PURE_WHITE(
+        id = "pure_white",
+        label = "Pure White",
+        hexCode = "#FFFFFF",
+        primaryColor = Color(0xFFFFFFFF),
+        backgroundColor = Color(0xFF050505),
+        cardColor = Color(0xFF141414),
+        glowColor = Color(0xFFFFFFFF),
+        borderColor = Color(0x40FFFFFF)
+    ),
+    NEON_BLUE(
+        id = "neon_blue",
+        label = "Neon Blue",
+        hexCode = "#0088FF",
+        primaryColor = Color(0xFF0088FF),
+        backgroundColor = Color(0xFF020914),
+        cardColor = Color(0xFF0A1828),
+        glowColor = Color(0xFF0088FF),
+        borderColor = Color(0x330088FF)
+    ),
+    CRIMSON_RED(
+        id = "crimson_red",
+        label = "Crimson Red",
+        hexCode = "#FF2A4D",
+        primaryColor = Color(0xFFFF2A4D),
+        backgroundColor = Color(0xFF0F0205),
+        cardColor = Color(0xFF200910),
+        glowColor = Color(0xFFFF4D6D),
+        borderColor = Color(0x33FF2A4D)
+    ),
+    FOREST_GREEN(
+        id = "forest_green",
+        label = "Forest Green",
+        hexCode = "#10B981",
+        primaryColor = Color(0xFF10B981),
+        backgroundColor = Color(0xFF020E08),
+        cardColor = Color(0xFF082015),
+        glowColor = Color(0xFF34D399),
+        borderColor = Color(0x3310B981)
+    ),
+    MINIMAL_GRAY(
+        id = "minimal_gray",
+        label = "Minimal Gray",
+        hexCode = "#94A3B8",
+        primaryColor = Color(0xFF94A3B8),
+        backgroundColor = Color(0xFF090A0D),
+        cardColor = Color(0xFF14171E),
+        glowColor = Color(0xFFCBD5E1),
+        borderColor = Color(0x2894A3B8)
+    ),
+    ARCTIC_WHITE(
+        id = "arctic_white",
+        label = "Arctic White",
+        hexCode = "#0284C7",
+        primaryColor = Color(0xFF0284C7),
+        backgroundColor = Color(0xFFF8FAFC),
+        cardColor = Color(0xFFFFFFFF),
+        glowColor = Color(0xFF38BDF8),
+        borderColor = Color(0x220284C7)
+    ),
+    OCEAN_BLUE(
+        id = "ocean_blue",
+        label = "Ocean Blue",
+        hexCode = "#00C8FF",
+        primaryColor = Color(0xFF00C8FF),
+        backgroundColor = Color(0xFF030914),
+        cardColor = Color(0xFF0A1728),
+        glowColor = Color(0xFF00C8FF),
+        borderColor = Color(0x3300C8FF)
+    ),
+    SUNSET_ORANGE(
+        id = "sunset_orange",
+        label = "Sunset Orange",
+        hexCode = "#F97316",
+        primaryColor = Color(0xFFF97316),
+        backgroundColor = Color(0xFF100702),
+        cardColor = Color(0xFF221107),
+        glowColor = Color(0xFFFB923C),
+        borderColor = Color(0x33F97316)
+    ),
+    ROYAL_PURPLE(
+        id = "royal_purple",
+        label = "Royal Purple",
+        hexCode = "#A855F7",
+        primaryColor = Color(0xFFA855F7),
+        backgroundColor = Color(0xFF0B0414),
+        cardColor = Color(0xFF1A0B2C),
+        glowColor = Color(0xFFC084FC),
+        borderColor = Color(0x33A855F7)
+    ),
+    MIDNIGHT_GOLD(
+        id = "midnight_gold",
+        label = "Midnight Gold",
+        hexCode = "#F59E0B",
+        primaryColor = Color(0xFFF59E0B),
+        backgroundColor = Color(0xFF0C0902),
+        cardColor = Color(0xFF201806),
+        glowColor = Color(0xFFFBBF24),
+        borderColor = Color(0x33F59E0B)
+    ),
+    NOTHING_WHITE(
+        id = "nothing_white",
+        label = "Nothing White",
+        hexCode = "#FFFFFF",
+        primaryColor = Color(0xFFE2E8F0),
+        backgroundColor = Color(0xFF000000),
+        cardColor = Color(0xFF111111),
+        glowColor = Color(0xFFFFFFFF),
+        borderColor = Color(0x40FFFFFF)
+    )
+}
+
+/**
+ * Legacy Accent Color Presets for backward compatibility.
  */
 enum class AccentColorPreset(
     val label: String,
@@ -107,7 +314,97 @@ enum class AccentColorPreset(
 }
 
 /**
- * Icon Visual Style Presets.
+ * Icon Shape Customization.
+ */
+enum class IconShapePreset(val id: String, val label: String) {
+    CIRCLE("circle", "Circle"),
+    ROUNDED_SQUARE("rounded_square", "Rounded Square"),
+    PEBBLE("pebble", "Pebble"),
+    SUPERELLIPSE("superellipse", "Superellipse"),
+    SQUIRCLE("squircle", "Squircle"),
+    SHARP("sharp", "Sharp")
+}
+
+/**
+ * Icon Label Size.
+ */
+enum class IconLabelSize(val label: String, val spSize: Float) {
+    SMALL("Small", 10.5f),
+    NORMAL("Normal", 12f),
+    LARGE("Large", 13.5f)
+}
+
+/**
+ * Notification Dot Style.
+ */
+enum class NotificationDotStyle(val label: String) {
+    ACCENT_GLOW("Accent Glow Dot"),
+    PILL_BADGE("Pill Badge"),
+    NUMBER_COUNT("Number Count"),
+    NONE("Off")
+}
+
+/**
+ * Clock Styles.
+ */
+enum class ClockStylePreset(val id: String, val label: String, val description: String) {
+    MINIMAL("minimal", "Minimal", "Clean minimalist single-line time with pill date"),
+    NOTHING_STYLE("nothing_style", "Nothing Style", "Signature dot-matrix layout with telemetry"),
+    PIXEL_STYLE("pixel_style", "Pixel Style", "Modern Android Material clock with date pill"),
+    HYPEROS("hyperos", "HyperOS", "Bold geometric futuristic display"),
+    STEALTHICS("stealthics", "Stealthics", "Neo-glass telemetry HUD with brackets"),
+    CYBER("cyber", "Cyber", "Cyberpunk monospace dual-hex time readout"),
+    DIGITAL("digital", "Digital", "Solid high-contrast athletic digital clock"),
+    OUTLINE("outline", "Outline", "Architectural hollow typography clock"),
+    GLASS("glass", "Glass", "Frosted glassmorphism card clock with ambient glow"),
+    LARGE_MINIMAL("large_minimal", "Large Minimal", "Ultra-clean oversized dual-line clock"),
+    SAMSUNG_STYLE("samsung_style", "Samsung Style", "Stacked bold hour and light minute numbers"),
+    MONOSPACE("monospace", "Monospace", "Technical monospace time with ISO timestamp"),
+    DIGITAL_THIN("digital_thin", "Digital Thin", "Ultra-thin architectural digital readout"),
+    DIGITAL_BOLD("digital_bold", "Digital Bold", "Solid high-contrast athletic digital clock"),
+    // Aliases for legacy compatibility
+    NOTHING_INSPIRED("nothing", "Nothing Inspired", "Dot matrix display"),
+    APPLE_STYLE("apple", "Apple Style", "Bold elegant typography"),
+    INDUSTRIAL("industrial", "Industrial", "Technical monospace"),
+    DIGITAL_MONO("digital_mono", "Digital Mono", "Terminal time readout"),
+    MODERN("neo_glass", "Modern Horizon", "Neo-glass dual-tone"),
+    LARGE_CLOCK("large", "Large Hero Clock", "Hero oversized typography")
+}
+
+/**
+ * Clock Position on Home Screen.
+ */
+enum class ClockPosition(val label: String) {
+    TOP("Top Header"),
+    CENTER("Center Stage"),
+    COMPACT("Compact Bar")
+}
+
+/**
+ * Clock Size.
+ */
+enum class ClockSize(val label: String, val scale: Float) {
+    COMPACT("Compact", 0.85f),
+    NORMAL("Normal", 1.0f),
+    LARGE("Large", 1.25f),
+    HERO("Hero Oversized", 1.55f)
+}
+
+/**
+ * Wallpaper Category.
+ */
+enum class WallpaperCategory(val label: String) {
+    RECENT("Recent"),
+    GALLERY("Gallery"),
+    AI_WALLPAPERS("AI Wallpapers"),
+    SOLID_COLORS("Solid Colors"),
+    GRADIENT("Gradient"),
+    BLURRED("Blurred"),
+    ANIMATED("Live Animated")
+}
+
+/**
+ * Icon Visual Style Presets (Legacy).
  */
 enum class IconStylePreset(val label: String, val description: String) {
     MATERIAL_YOU("Material You", "Dynamic dual-tone adaptive palette"),
@@ -120,7 +417,7 @@ enum class IconStylePreset(val label: String, val description: String) {
 }
 
 /**
- * Animation & Motion Speed Presets.
+ * Animation Presets.
  */
 enum class AnimationPreset(val label: String, val description: String, val speedMultiplier: Float) {
     MINIMAL("Minimal", "Subtle, zero overshoot, instantaneous feel", 0.5f),
@@ -131,7 +428,7 @@ enum class AnimationPreset(val label: String, val description: String, val speed
 }
 
 /**
- * Interface Spacing & Density.
+ * Interface Density.
  */
 enum class InterfaceDensity(val label: String, val paddingMultiplier: Float, val description: String) {
     COMPACT("Compact", 0.8f, "Higher information density, reduced padding"),
@@ -140,7 +437,7 @@ enum class InterfaceDensity(val label: String, val paddingMultiplier: Float, val
 }
 
 /**
- * Wallpaper Visual Presets.
+ * Wallpaper Visual Presets (Legacy).
  */
 enum class WallpaperStylePreset(val label: String, val description: String, val isFuture: Boolean = false) {
     STATIC_WALLPAPER("Static Wallpaper", "Crisp minimalist photographic backdrop"),
@@ -148,19 +445,6 @@ enum class WallpaperStylePreset(val label: String, val description: String, val 
     BLURRED_WALLPAPER("Blurred Wallpaper", "Soft volumetric frosted ambient tone"),
     LIVE_WALLPAPER("Live Wallpaper", "Breathing organic pulse & particle physics"),
     VIDEO_WALLPAPER("Video Wallpaper", "High frame-rate looping atmosphere", isFuture = true)
-}
-
-/**
- * Clock Styles.
- */
-enum class ClockStylePreset(val id: String, val label: String, val description: String) {
-    MINIMAL("minimal", "Minimal", "Ultra-clean single line time & date"),
-    NOTHING_INSPIRED("nothing", "Nothing Inspired", "Signature dot-matrix layout with telemetry"),
-    APPLE_STYLE("apple", "Apple Style", "Bold elegant typography with dynamic date capsule"),
-    INDUSTRIAL("industrial", "Industrial", "Technical monospace time with ISO timestamp"),
-    DIGITAL_MONO("digital_mono", "Digital Mono", "Retro-modern terminal time readout"),
-    MODERN("neo_glass", "Modern Horizon", "Neo-glass dual-tone with glowing minutes"),
-    LARGE_CLOCK("large", "Large Hero Clock", "Oversized typography filling the header")
 }
 
 /**
@@ -176,7 +460,7 @@ enum class WidgetStyle(val label: String, val description: String) {
 }
 
 /**
- * Status Bar Appearance Mode.
+ * Status Bar Mode.
  */
 enum class StatusBarMode(val label: String, val description: String) {
     DEFAULT("Default", "Standard system status bar icons"),
@@ -257,18 +541,58 @@ enum class StreakCardStyle(val label: String) {
 data class AppearanceState(
     // 1. Typography
     val fontFamily: AppFontFamily = AppFontFamily.SPACE_GROTESK,
+    val titleFont: AppFontFamily = AppFontFamily.SPACE_GROTESK,
+    val bodyFont: AppFontFamily = AppFontFamily.SPACE_GROTESK,
+    val clockFont: AppFontFamily = AppFontFamily.SPACE_GROTESK,
+    val fontSizeScale: FontSizeScale = FontSizeScale.DEFAULT,
+    val fontLetterSpacingSp: Float = 0f,
+    val fontLineHeightMultiplier: Float = 1.0f,
+    val fontBoldness: FontBoldnessOption = FontBoldnessOption.NORMAL,
 
-    // 2. Theme
+    // 2. Theme & Colors
     val themeMode: ThemeMode = ThemeMode.AMOLED_BLACK,
-
-    // 3. Accent Color
+    val themeColorPreset: ThemeColorPreset = ThemeColorPreset.AMOLED_BLACK,
     val accentPreset: AccentColorPreset = AccentColorPreset.RED,
     val customAccentHex: String = "#FF2A4D",
+    val customCardColorHex: String = "#0D0E12",
+    val customGlowColorHex: String = "#FF2A4D",
+    val customBorderColorHex: String = "#33FF2A4D",
+    val themeTransparencyPercent: Int = 15,
+    val blurAmountPercent: Int = 30,
 
-    // 4. Icon Style
+    // 3. Icon Customization
+    val iconShape: IconShapePreset = IconShapePreset.ROUNDED_SQUARE,
+    val iconCornerRadiusPercent: Int = 24,
+    val iconSizeDp: Int = 52,
+    val iconShowLabels: Boolean = true,
+    val iconLabelSize: IconLabelSize = IconLabelSize.NORMAL,
+    val iconShadow: Boolean = true,
+    val iconOutline: Boolean = false,
+    val iconSpacingDp: Int = 12,
+    val dockIconSizeDp: Int = 50,
+    val dockTransparencyPercent: Int = 20,
+    val dockBlurEnabled: Boolean = true,
+    val dockRadiusPercent: Int = 50,
+    val notificationDotStyle: NotificationDotStyle = NotificationDotStyle.ACCENT_GLOW,
     val iconStyle: IconStylePreset = IconStylePreset.ROUNDED,
 
-    // 5. Animation Style
+    // 4. Clock Customization
+    val clockStylePreset: ClockStylePreset = ClockStylePreset.LARGE_MINIMAL,
+    val clockIs24Hour: Boolean = false,
+    val clockShowSeconds: Boolean = false,
+    val clockDateFormat: String = "EEE, MMM d",
+    val clockShowWeather: Boolean = true,
+    val clockShowGreeting: Boolean = true,
+    val clockPosition: ClockPosition = ClockPosition.TOP,
+    val clockSize: ClockSize = ClockSize.LARGE,
+
+    // 5. Wallpaper
+    val wallpaperCategory: WallpaperCategory = WallpaperCategory.GRADIENT,
+    val wallpaperSelectionId: String = "obsidian_crimson",
+    val wallpaperStyle: WallpaperStylePreset = WallpaperStylePreset.GRADIENT,
+    val wallpaperBlurPercent: Int = 30,
+
+    // 6. Animation Style
     val animationPreset: AnimationPreset = AnimationPreset.BALANCED,
     val reduceMotion: Boolean = false,
     val enablePhysics: Boolean = true,
@@ -276,58 +600,44 @@ data class AppearanceState(
     val enableBlur: Boolean = true,
     val enableGlow: Boolean = true,
 
-    // 6. Corner Radius (0f to 1f, representing 0% to 100%)
+    // 7. Corner Radius, Density & Layout
     val cornerRadiusFactor: Float = 0.50f, // 0 = 0dp, 1.0 = 28dp
-
-    // 7. Interface Density
     val density: InterfaceDensity = InterfaceDensity.COMFORTABLE,
+    val layoutRows: Int = 5,
+    val layoutColumns: Int = 4,
+    val layoutShowSearchBar: Boolean = false,
+    val layoutHideStatusBar: Boolean = false,
+    val layoutHideDock: Boolean = false,
+    val layoutWidgetPaddingDp: Int = 16,
+    val layoutGridDensity: InterfaceDensity = InterfaceDensity.COMFORTABLE,
 
-    // 8. Blur
-    val wallpaperBlurPercent: Int = 30, // 0 to 100
-
-    // 9. Transparency (0 to 100)
+    // 8. Legacy Transparency Values (0 to 100)
     val cardTransparency: Int = 15,
     val dockTransparency: Int = 20,
     val widgetTransparency: Int = 10,
     val notesTransparency: Int = 15,
     val searchTransparency: Int = 20,
 
-    // 10. Wallpaper Style
-    val wallpaperStyle: WallpaperStylePreset = WallpaperStylePreset.GRADIENT,
-
-    // 11. Clock Style
-    val clockStylePreset: ClockStylePreset = ClockStylePreset.MODERN,
-
-    // 12. Widget Style
+    // 9. Legacy Widgets, Navigation, Notes & XP
     val widgetStyle: WidgetStyle = WidgetStyle.GLASS,
-
-    // 13. Status Bar
     val statusBarMode: StatusBarMode = StatusBarMode.DEFAULT,
-
-    // 14. Navigation
     val gestureSensitivity: GestureSensitivity = GestureSensitivity.MEDIUM,
     val dockSize: DockSize = DockSize.NORMAL,
     val dockBlur: Boolean = true,
     val dockOpacity: Float = 0.85f,
-
-    // 15. App Drawer
     val drawerGridCols: Int = 4,
     val drawerAlphabetScroller: Boolean = true,
-    val drawerScrollbarWidth: Int = 4, // 2, 4, 6 dp
-    val drawerScrollbarAnimation: String = "fade", // fade, persistent, elastic
-    val drawerSearchPosition: String = "top", // top, bottom
-    val drawerSearchStyle: String = "glass", // glass, minimal, outlined
+    val drawerScrollbarWidth: Int = 4,
+    val drawerScrollbarAnimation: String = "fade",
+    val drawerSearchPosition: String = "top",
+    val drawerSearchStyle: String = "glass",
     val drawerAppLabels: Boolean = true,
-    val drawerSpacing: String = "balanced", // tight, balanced, relaxed
-    val drawerFolderStyle: String = "grid", // grid, stack, floating
-
-    // 16. Notes
+    val drawerSpacing: String = "balanced",
+    val drawerFolderStyle: String = "grid",
     val notesPaperStyle: NotesPaperStyle = NotesPaperStyle.PLAIN,
     val notesInkColorHex: String = "#FF2A4D",
     val notesFontFamily: AppFontFamily = AppFontFamily.SPACE_GROTESK,
     val notesSpacing: NotesSpacing = NotesSpacing.NORMAL,
-
-    // 17. XP System
     val xpSystemStyle: XpSystemStyle = XpSystemStyle.GRADIENT_GLOW,
     val xpBarGlow: Boolean = true,
     val xpLevelBadgeShape: LevelBadgeShape = LevelBadgeShape.HEX,
@@ -335,7 +645,7 @@ data class AppearanceState(
     val xpAnimationsEnabled: Boolean = true
 ) {
     /**
-     * Active Accent Color derived from preset or custom hex.
+     * Active Accent Color derived from active preset, themeColorPreset, or custom hex.
      */
     val activeAccentColor: Color
         get() {
@@ -343,21 +653,48 @@ data class AppearanceState(
                 return try {
                     Color(android.graphics.Color.parseColor(customAccentHex))
                 } catch (e: Exception) {
-                    Color(0xFFFF2A4D)
+                    themeColorPreset.primaryColor
                 }
             }
-            return accentPreset.color
+            return themeColorPreset.primaryColor
+        }
+
+    val activeCardColor: Color
+        get() {
+            return try {
+                Color(android.graphics.Color.parseColor(customCardColorHex))
+            } catch (e: Exception) {
+                themeColorPreset.cardColor
+            }
+        }
+
+    val activeGlowColor: Color
+        get() {
+            return try {
+                Color(android.graphics.Color.parseColor(customGlowColorHex))
+            } catch (e: Exception) {
+                themeColorPreset.glowColor
+            }
+        }
+
+    val activeBorderColor: Color
+        get() {
+            return try {
+                Color(android.graphics.Color.parseColor(customBorderColorHex))
+            } catch (e: Exception) {
+                themeColorPreset.borderColor
+            }
         }
 
     /**
-     * Computed card corner radius in dp from the factor.
+     * Computed card corner radius in dp from the factor or iconCornerRadiusPercent.
      */
     val cardRadiusDp: Int
-        get() = (cornerRadiusFactor * 28f).toInt().coerceIn(0, 32)
+        get() = ((iconCornerRadiusPercent / 100f) * 28f).toInt().coerceIn(0, 32)
 
     val buttonRadiusDp: Int
-        get() = (cornerRadiusFactor * 22f).toInt().coerceIn(0, 26)
+        get() = ((iconCornerRadiusPercent / 100f) * 22f).toInt().coerceIn(0, 26)
 
     val smallRadiusDp: Int
-        get() = (cornerRadiusFactor * 12f).toInt().coerceIn(0, 16)
+        get() = ((iconCornerRadiusPercent / 100f) * 12f).toInt().coerceIn(0, 16)
 }

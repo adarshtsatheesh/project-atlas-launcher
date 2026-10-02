@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -43,6 +44,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,23 +63,31 @@ import com.example.ui.theme.AtlasBackground
 import com.example.ui.theme.AtlasBorder
 import com.example.ui.theme.AtlasCard
 import com.example.ui.theme.AtlasCardElevated
+import com.example.ui.theme.CrimsonElectric
 import com.example.ui.theme.SoftSageGreen
 import com.example.ui.theme.SoftSageGreenGlow
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPureWhite
 import com.example.ui.theme.TextSecondary
 import com.example.ui.theme.WarmSand
+import com.example.util.GeminiClient
+import com.example.util.GeminiException
+import kotlinx.coroutines.launch
 
 @Composable
 fun AiAssistantScreen(
     activeMission: TaskEntity?,
     onClose: () -> Unit,
     onAddMicroStepToMission: (TaskEntity, String) -> Unit,
+    coachContext: String = "",
     modifier: Modifier = Modifier
 ) {
+    val scope = rememberCoroutineScope()
     var queryText by remember { mutableStateOf("") }
     var currentAiReply by remember { mutableStateOf<String?>(null) }
     var suggestedActions by remember { mutableStateOf<List<String>>(emptyList()) }
+    var isThinking by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
 
     // Breathing floating animation for the Luminous Orb
     val infiniteTransition = rememberInfiniteTransition(label = "orbFloat")
@@ -100,32 +110,52 @@ fun AiAssistantScreen(
         label = "orbGlowScale"
     )
 
-    fun handlePrompt(prompt: String) {
-        when {
-            prompt.contains("Break", ignoreCase = true) || prompt.contains("step", ignoreCase = true) -> {
-                val missionName = activeMission?.title ?: "Current Objective"
-                currentAiReply = "To bypass friction on \"$missionName\", we apply the 5-Minute Momentum Rule. Here are 3 immediate frictionless micro-actions:"
-                suggestedActions = listOf(
-                    "Open workspace & gather reference material (2 min)",
-                    "Write down the single next sentence or line of code (3 min)",
-                    "Run or review the first incremental draft (5 min)"
-                )
-            }
-            prompt.contains("Plan", ignoreCase = true) -> {
-                currentAiReply = "Calm clarity for today:\n1. Execute your Primary Mission with a 25-minute sprint.\n2. Take a 5-minute conscious breath away from glowing screens.\n3. Complete one secondary action before opening distraction apps."
+    fun systemInstruction(): String = buildString {
+        appendLine("You are Atlas, the execution-first focus coach built into the Atlas Android launcher.")
+        appendLine("Your job is to help the user DO, not just plan: be direct, concrete and calm.")
+        appendLine("Answer in at most 5 short sentences. No markdown headings, no bullet characters, no emojis.")
+        appendLine("Whenever possible, suggest an action that takes 5 minutes or less.")
+        if (coachContext.isNotBlank()) {
+            appendLine("Context about the user:\n$coachContext")
+        }
+    }
+
+    fun submit(prompt: String) {
+        val trimmed = prompt.trim()
+        if (trimmed.isEmpty() || isThinking) return
+
+        scope.launch {
+            isThinking = true
+            errorMessage = null
+            suggestedActions = emptyList()
+            try {
+                val mission = activeMission
+                val wantsBreakdown = Regex("(?i)\\b(break|steps?|micro|split)").containsMatchIn(trimmed)
+                if (wantsBreakdown && mission != null) {
+                    val steps = GeminiClient.suggestMicroSteps(
+                        taskTitle = mission.title,
+                        taskDescription = mission.description,
+                        existingSteps = mission.getMicroSteps().map { it.first }
+                    )
+                    if (steps.isNotEmpty()) {
+                        currentAiReply = "Three frictionless next actions for \"${mission.title}\". Tap any of them to add it to the mission:"
+                        suggestedActions = steps
+                    } else {
+                        currentAiReply = GeminiClient.generate(systemInstruction(), trimmed)
+                    }
+                } else {
+                    currentAiReply = GeminiClient.generate(systemInstruction(), trimmed)
+                }
+            } catch (e: GeminiException) {
+                currentAiReply = null
                 suggestedActions = emptyList()
-            }
-            prompt.contains("Suggest", ignoreCase = true) || prompt.contains("time", ignoreCase = true) -> {
-                currentAiReply = "Based on biological circadian peaks, optimal deep execution occurs between 9:00 AM and 11:30 AM. Schedule a 50-minute deep block now."
-                suggestedActions = listOf("Start 50-min Deep Block")
-            }
-            prompt.contains("procrastinat", ignoreCase = true) || prompt.contains("resistance", ignoreCase = true) -> {
-                currentAiReply = "Procrastination is emotional resistance to uncertainty, not laziness. Lower the bar of entry: Commit to just 3 minutes of effort without needing to finish."
-                suggestedActions = listOf("Commit to 3 minutes of work")
-            }
-            else -> {
-                currentAiReply = "Understood. The fastest path to mental peace is starting the smallest tangible piece right now."
-                suggestedActions = listOf("Start 10-minute micro sprint")
+                errorMessage = e.message ?: "Couldn't reach Gemini. Try again."
+            } catch (e: Exception) {
+                currentAiReply = null
+                suggestedActions = emptyList()
+                errorMessage = "Something went wrong talking to Gemini. Try again."
+            } finally {
+                isThinking = false
             }
         }
     }
@@ -240,8 +270,63 @@ fun AiAssistantScreen(
 
             Spacer(modifier = Modifier.height(28.dp))
 
+            // Thinking indicator while Gemini is generating
+            if (isThinking) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(AtlasCardElevated)
+                        .border(1.dp, SoftSageGreen.copy(alpha = 0.4f), RoundedCornerShape(22.dp))
+                        .padding(18.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        color = SoftSageGreen,
+                        strokeWidth = 2.dp
+                    )
+                    Text(
+                        text = "Atlas is thinking…",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+            }
+
+            // Error card (missing key, offline, rate limit, ...)
+            if (errorMessage != null && !isThinking) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(22.dp))
+                        .background(AtlasCardElevated)
+                        .border(1.dp, CrimsonElectric.copy(alpha = 0.5f), RoundedCornerShape(22.dp))
+                        .padding(18.dp)
+                ) {
+                    Text(
+                        text = "Connection problem",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = CrimsonElectric,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = errorMessage!!,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary,
+                        lineHeight = 20.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+            }
+
             // AI Responses Card if active
-            if (currentAiReply != null) {
+            if (currentAiReply != null && !isThinking) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -307,7 +392,7 @@ fun AiAssistantScreen(
                             .clip(RoundedCornerShape(18.dp))
                             .background(AtlasCard)
                             .border(1.dp, AtlasBorder, RoundedCornerShape(18.dp))
-                            .clickable { handlePrompt(prompt) }
+                            .clickable { submit(prompt) }
                             .padding(horizontal = 18.dp, vertical = 14.dp)
                     ) {
                         Row(
@@ -359,20 +444,21 @@ fun AiAssistantScreen(
 
                 IconButton(
                     onClick = {
-                        if (queryText.isNotBlank()) {
-                            handlePrompt(queryText)
+                        if (queryText.isNotBlank() && !isThinking) {
+                            val prompt = queryText
                             queryText = ""
+                            submit(prompt)
                         }
                     },
                     modifier = Modifier
                         .size(38.dp)
                         .clip(CircleShape)
-                        .background(if (queryText.isNotBlank()) SoftSageGreen else AtlasCardElevated)
+                        .background(if (queryText.isNotBlank() && !isThinking) SoftSageGreen else AtlasCardElevated)
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.Send,
                         contentDescription = "Send",
-                        tint = if (queryText.isNotBlank()) AtlasBackground else TextMuted,
+                        tint = if (queryText.isNotBlank() && !isThinking) AtlasBackground else TextMuted,
                         modifier = Modifier.size(16.dp)
                     )
                 }

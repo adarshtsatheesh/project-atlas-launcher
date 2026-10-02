@@ -46,7 +46,12 @@ android {
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
     }
-    debug { signingConfig = signingConfigs.getByName("debugConfig") }
+    debug {
+      signingConfig = signingConfigs.getByName("debugConfig")
+      // Side-load next to the Play/AI Studio build (different signing key),
+      // so a debug install never has to uninstall the store build.
+      applicationIdSuffix = ".dev"
+    }
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11

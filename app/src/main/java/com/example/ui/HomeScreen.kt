@@ -2,8 +2,15 @@ package com.example.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -41,8 +48,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -54,26 +63,23 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.ui.appearance.LiveEditorBottomDock
+import com.example.ui.appearance.LiveEditorTopBar
 import com.example.ui.components.AiAssistantScreen
 import com.example.ui.components.AmbientLockScreen
 import com.example.ui.components.AppDrawerSheet
 import com.example.ui.components.AtlasClockHeader
 import com.example.ui.components.FocusModeOverlay
-import com.example.ui.components.FutureDashboardScreen
 import com.example.ui.components.GestureOverviewSheet
 import com.example.ui.components.InfiniteNotesScreen
 import com.example.ui.components.JourneyScreen
-import com.example.ui.components.MissionCard
 import com.example.ui.components.MissionsScreen
 import com.example.ui.components.MountainMistBackdrop
 import com.example.ui.components.AtlasWallpaperBackdrop
 import com.example.ui.components.OnboardingSheet
-import com.example.ui.components.ProgressStatsScreen
 import com.example.ui.components.QuickDock
 import com.example.ui.components.SettingsScreen
-import com.example.ui.appearance.AppearanceStudioScreen
 import com.example.ui.components.TodayMissionTaskConsole
-import com.example.ui.components.TodayTasksSection
 import com.example.ui.theme.AtlasBackground
 import com.example.ui.theme.AtlasBorder
 import com.example.ui.theme.AtlasCard
@@ -110,7 +116,8 @@ fun HomeScreen(
     }
 
     // Handle Back Press for any open full-screen modals or overlays
-    val anyModalOpen = uiState.isAppDrawerOpen ||
+    val anyModalOpen = uiState.isEditMode ||
+            uiState.isAppDrawerOpen ||
             uiState.isInfiniteNotesOpen ||
             uiState.isFutureDashboardOpen ||
             uiState.isGestureOverviewOpen ||
@@ -125,6 +132,13 @@ fun HomeScreen(
 
     BackHandler(enabled = anyModalOpen) {
         when {
+            uiState.isEditMode -> {
+                if (uiState.activeEditCategory != null) {
+                    viewModel.setEditCategory(null)
+                } else {
+                    viewModel.closeEditMode()
+                }
+            }
             uiState.isAppearanceStudioOpen -> viewModel.closeAppearanceStudio()
             uiState.isFocusModeActive -> viewModel.finishFocusSession(completedSuccessfully = false)
             uiState.isInfiniteNotesOpen -> viewModel.closeInfiniteNotes()
@@ -144,17 +158,23 @@ fun HomeScreen(
         modifier = modifier
             .fillMaxSize()
             .background(AtlasBackground)
-            .pointerInput(Unit) {
+            .pointerInput(uiState.isEditMode) {
                 detectTapGestures(
                     onDoubleTap = {
-                        lockDeviceAction()
+                        if (!uiState.isEditMode) lockDeviceAction()
+                    },
+                    onTap = {
+                        if (uiState.isEditMode && uiState.activeEditCategory != null) {
+                            viewModel.setEditCategory(null)
+                        }
                     },
                     onLongPress = {
-                        viewModel.openSettings()
+                        viewModel.openEditMode()
                     }
                 )
             }
-            .pointerInput(Unit) {
+            .pointerInput(uiState.isEditMode) {
+                if (uiState.isEditMode) return@pointerInput
                 var totalDragX = 0f
                 var totalDragY = 0f
                 var gestureFired = false
@@ -207,17 +227,55 @@ fun HomeScreen(
             .testTag("home_screen_container")
     ) {
         // Atmospheric Glassmorphic Radiant Backdrop
+        val editModeDarken by animateFloatAsState(
+            targetValue = if (uiState.isEditMode) 0.12f else 0f,
+            animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow),
+            label = "edit_darken"
+        )
+        val editModeBlur by animateDpAsState(
+            targetValue = if (uiState.isEditMode) 8.dp else 0.dp,
+            animationSpec = spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMediumLow),
+            label = "edit_blur"
+        )
+        val homeContentScale by animateFloatAsState(
+            targetValue = if (uiState.isEditMode) (if (uiState.activeEditCategory != null) 0.90f else 0.95f) else 1.0f,
+            animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow),
+            label = "home_content_scale"
+        )
+        val homeContentTranslationY by animateDpAsState(
+            targetValue = if (uiState.isEditMode && uiState.activeEditCategory != null) (-42).dp else 0.dp,
+            animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow),
+            label = "home_content_trans_y"
+        )
+
         AtlasWallpaperBackdrop(
             wallpaper = uiState.selectedWallpaper,
             customImagePath = uiState.customWallpaperPath,
-            dimAlpha = uiState.wallpaperDim
+            dimAlpha = uiState.wallpaperDim + editModeDarken,
+            modifier = if (editModeBlur > 0.dp) Modifier.blur(editModeBlur) else Modifier
         )
+
+        if (uiState.isEditMode) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.12f))
+            )
+        }
 
         // Main Calm Launcher Home View
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
+                .then(
+                    if (!uiState.appearanceState.layoutHideStatusBar) Modifier.statusBarsPadding()
+                    else Modifier.padding(top = 10.dp)
+                )
+                .graphicsLayer {
+                    scaleX = homeContentScale
+                    scaleY = homeContentScale
+                    translationY = homeContentTranslationY.toPx()
+                }
         ) {
             Column(
                 modifier = Modifier
@@ -226,12 +284,19 @@ fun HomeScreen(
                 // High-End Multi-Style Clock (Neo-Glass, Stacked Digital, Chronograph)
                 AtlasClockHeader(
                     clockStyle = uiState.selectedClockStyle,
-                    onToggleClockStyle = { viewModel.toggleClockStyle() },
-                    onOpenGestureOverview = { viewModel.openGestureOverview() },
-                    onLockScreen = lockDeviceAction,
-                    onOpenAmbientLock = { viewModel.openAmbientLock() },
-                    onOpenProgressStats = { viewModel.openProgress() },
-                    onOpenSettings = { viewModel.openSettings() }
+                    weather = uiState.weather,
+                    onToggleClockStyle = {
+                        if (uiState.isEditMode) {
+                            viewModel.setEditCategory(com.example.ui.viewmodel.EditCategory.CLOCK)
+                        } else {
+                            viewModel.toggleClockStyle()
+                        }
+                    },
+                    onOpenGestureOverview = { if (!uiState.isEditMode) viewModel.openGestureOverview() },
+                    onLockScreen = { if (!uiState.isEditMode) lockDeviceAction() },
+                    onOpenAmbientLock = { if (!uiState.isEditMode) viewModel.openAmbientLock() },
+                    onOpenProgressStats = { if (!uiState.isEditMode) viewModel.openProgress() },
+                    onOpenSettings = { if (!uiState.isEditMode) viewModel.openSettings() }
                 )
 
                 Spacer(modifier = Modifier.height(14.dp))
@@ -240,7 +305,9 @@ fun HomeScreen(
                 TodayMissionTaskConsole(
                     activeMission = uiState.activeMission,
                     tasks = uiState.todayTasks,
-                    onStartFocus = { viewModel.startFocusMode() },
+                    isEditMode = uiState.isEditMode,
+                    onEditWidget = { viewModel.setEditCategory(com.example.ui.viewmodel.EditCategory.WIDGETS) },
+                    onStartFocus = { if (!uiState.isEditMode) viewModel.startFocusMode() },
                     onToggleTask = { viewModel.toggleTaskCompletion(it) },
                     onSetAsMission = { viewModel.setActiveMission(it) },
                     onQuickAddTask = { title ->
@@ -251,20 +318,60 @@ fun HomeScreen(
                             scheduledDate = System.currentTimeMillis()
                         )
                     },
-                    onOpenCalendarPlanner = { viewModel.openMissions() }
+                    onOpenCalendarPlanner = { if (!uiState.isEditMode) viewModel.openMissions() },
+                    modifier = Modifier.padding(horizontal = (uiState.appearanceState.layoutWidgetPaddingDp - 8).coerceAtLeast(0).dp)
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
             // Bottom Dock: 4 Essential Apps (Phone, Messages, Browser, Camera) & Swipe Up Guide
-            QuickDock(
-                pinnedApps = uiState.pinnedApps,
-                iconSize = uiState.appIconSize,
-                hideLabels = uiState.hideDockLabels,
-                onLaunchApp = { viewModel.launchApp(it) },
-                onTogglePin = { viewModel.toggleAppPin(it) },
-                onOpenAppDrawer = { viewModel.openAppDrawer() }
+            if (!uiState.appearanceState.layoutHideDock || uiState.isEditMode) {
+                QuickDock(
+                    pinnedApps = uiState.pinnedApps,
+                    iconSize = uiState.appIconSize,
+                    hideLabels = uiState.hideDockLabels,
+                    isEditMode = uiState.isEditMode,
+                    onLaunchApp = { if (!uiState.isEditMode) viewModel.launchApp(it) },
+                    onTogglePin = { viewModel.toggleAppPin(it) },
+                    onOpenAppDrawer = { if (!uiState.isEditMode) viewModel.openAppDrawer() }
+                )
+            }
+        }
+
+        // Top Navigation Bar for Live Home Screen Editor
+        AnimatedVisibility(
+            visible = uiState.isEditMode,
+            enter = fadeIn(tween(220)) + slideInVertically { -it },
+            exit = fadeOut(tween(180)) + slideOutVertically { -it },
+            modifier = Modifier.align(Alignment.TopCenter)
+        ) {
+            LiveEditorTopBar(
+                onClose = { viewModel.closeEditMode() },
+                onDone = { viewModel.closeEditMode() }
+            )
+        }
+
+        // Floating Bottom Customization Dock for Live Home Screen Editor
+        AnimatedVisibility(
+            visible = uiState.isEditMode,
+            enter = slideInVertically(
+                initialOffsetY = { it },
+                animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow)
+            ) + fadeIn(),
+            exit = slideOutVertically(
+                targetOffsetY = { it },
+                animationSpec = spring(dampingRatio = 0.82f, stiffness = Spring.StiffnessMediumLow)
+            ) + fadeOut(),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            LiveEditorBottomDock(
+                activeCategory = uiState.activeEditCategory,
+                onSelectCategory = { viewModel.setEditCategory(it) },
+                appearanceState = uiState.appearanceState,
+                onUpdateAppearance = { viewModel.updateAppearance(it) },
+                onSelectWallpaper = { viewModel.setWallpaper(it) },
+                onSetCustomWallpaper = { viewModel.setCustomWallpaperFromUri(android.net.Uri.parse(it)) }
             )
         }
 
@@ -330,6 +437,7 @@ fun HomeScreen(
                 currentFormTitle = uiState.currentFormTitle,
                 nextEvolutionTitle = uiState.nextEvolutionTitle,
                 momentumDays = uiState.momentumDays,
+                unlockedBadges = uiState.unlockedBadges,
                 colorPalette = uiState.selectedColorPalette,
                 onClaimXp = { viewModel.claimTodayXp(it) },
                 onUpdateIdentityTitle = { viewModel.setIdentityTitle(it) },
@@ -402,6 +510,7 @@ fun HomeScreen(
                 currentFormTitle = uiState.currentFormTitle,
                 nextEvolutionTitle = uiState.nextEvolutionTitle,
                 momentumDays = uiState.momentumDays,
+                unlockedBadges = uiState.unlockedBadges,
                 colorPalette = uiState.selectedColorPalette,
                 onClaimXp = { viewModel.claimTodayXp(it) },
                 onUpdateIdentityTitle = { viewModel.setIdentityTitle(it) },
@@ -429,6 +538,7 @@ fun HomeScreen(
         ) {
             AiAssistantScreen(
                 activeMission = uiState.activeMission,
+                coachContext = uiState.coachContext,
                 onClose = { viewModel.closeAiCoach() },
                 onAddMicroStepToMission = { task, step ->
                     viewModel.addMicroStep(task, step)
@@ -474,23 +584,13 @@ fun HomeScreen(
                 onPickCustomWallpaperUri = { viewModel.setCustomWallpaperFromUri(it) },
                 onUpdateWallpaperDim = { viewModel.setWallpaperDim(it) },
                 onClearCustomWallpaper = { viewModel.clearCustomWallpaper() },
+                onOpenAiCoach = { viewModel.openAiCoach() },
+                coachTone = uiState.coachTone,
+                defaultFocusPreset = uiState.defaultFocusPreset,
+                onCycleCoachTone = { viewModel.cycleCoachTone() },
+                onCycleDefaultFocusPreset = { viewModel.cycleDefaultFocusPreset() },
                 onOpenAppearanceStudio = { viewModel.openAppearanceStudio() },
                 onClose = { viewModel.closeSettings() }
-            )
-        }
-
-        // Layer: Appearance Studio Screen
-        AnimatedVisibility(
-            visible = uiState.isAppearanceStudioOpen,
-            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
-        ) {
-            AppearanceStudioScreen(
-                appearanceState = uiState.appearanceState,
-                onUpdateAppearance = { transform ->
-                    viewModel.updateAppearance(transform)
-                },
-                onClose = { viewModel.closeAppearanceStudio() }
             )
         }
 
@@ -561,6 +661,8 @@ fun HomeScreen(
                 isTimerRunning = uiState.isFocusTimerRunning,
                 selectedPreset = uiState.selectedFocusModePreset,
                 isBreathingActive = uiState.isBreathingPulseActive,
+                ambientSoundEnabled = uiState.ambientSoundEnabled,
+                exitFrictionEnabled = uiState.exitFrictionEnabled,
                 onPause = { viewModel.pauseFocusTimer() },
                 onResume = { viewModel.resumeFocusTimer() },
                 onSelectPreset = { viewModel.selectFocusPreset(it) },

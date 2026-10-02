@@ -82,6 +82,18 @@ class TaskRepository(private val taskDao: TaskDao) {
         }
     }
 
+    suspend fun getTask(taskId: Long): TaskEntity? = taskDao.getTaskById(taskId)
+
+    /**
+     * Adds a micro-step by re-reading the task first, so rapid consecutive adds
+     * (e.g. three AI-generated steps) never overwrite each other with stale state.
+     */
+    suspend fun addMicroStepById(taskId: Long, stepText: String) {
+        if (stepText.isBlank()) return
+        val task = taskDao.getTaskById(taskId) ?: return
+        addMicroStep(task, stepText)
+    }
+
     suspend fun addMicroStep(task: TaskEntity, stepText: String) {
         if (stepText.isBlank()) return
         val currentSteps = task.getMicroSteps().toMutableList()

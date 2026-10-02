@@ -1,5 +1,6 @@
 package com.example.ui.components
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -43,6 +44,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -71,6 +74,7 @@ import com.example.ui.theme.TextPureWhite
 import com.example.ui.theme.TextSecondary
 import com.example.ui.theme.WarmSand
 import com.example.ui.viewmodel.FocusPreset
+import com.example.util.AmbientSoundPlayer
 import java.util.Locale
 
 @Composable
@@ -81,6 +85,8 @@ fun FocusModeOverlay(
     isTimerRunning: Boolean,
     selectedPreset: FocusPreset,
     isBreathingActive: Boolean,
+    ambientSoundEnabled: Boolean = true,
+    exitFrictionEnabled: Boolean = true,
     onPause: () -> Unit,
     onResume: () -> Unit,
     onSelectPreset: (FocusPreset) -> Unit,
@@ -90,9 +96,28 @@ fun FocusModeOverlay(
     modifier: Modifier = Modifier
 ) {
     var showExitDialog by remember { mutableStateOf(false) }
-    var isLofiPlaying by remember { mutableStateOf(true) }
-    var selectedSoundTrack by remember { mutableStateOf("Forest") }
-    val soundTracks = listOf("Forest", "Rain", "Deep Space", "Lo-fi Cafe")
+    var isLofiPlaying by remember { mutableStateOf(ambientSoundEnabled) }
+    var selectedSoundTrack by remember { mutableStateOf(AmbientSoundPlayer.Track.FOREST) }
+
+    // Real procedural ambience synthesised on a background thread (no audio assets)
+    val ambientPlayer = remember { AmbientSoundPlayer() }
+    DisposableEffect(Unit) {
+        onDispose { ambientPlayer.release() }
+    }
+    LaunchedEffect(ambientSoundEnabled, isLofiPlaying, selectedSoundTrack) {
+        if (ambientSoundEnabled && isLofiPlaying) {
+            ambientPlayer.start(selectedSoundTrack)
+        } else {
+            ambientPlayer.stop()
+        }
+    }
+
+    // Mindful Exit Friction: gate early exits behind a breathing prompt when enabled
+    val requestExit: () -> Unit = {
+        if (exitFrictionEnabled) showExitDialog = true else onFinishSession(false)
+    }
+
+    BackHandler(enabled = true) { requestExit() }
 
     // Breathing pulse animation (4-second inhale, 4-second exhale)
     val infiniteTransition = rememberInfiniteTransition(label = "breathing")
@@ -136,7 +161,7 @@ fun FocusModeOverlay(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(
-                    onClick = { showExitDialog = true },
+                    onClick = { requestExit() },
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
@@ -272,6 +297,7 @@ fun FocusModeOverlay(
             Spacer(modifier = Modifier.height(24.dp))
 
             // Lo-fi Ambient Sound Bar (Screen 7 layout: "Lo-fi Focus • Forest")
+            if (ambientSoundEnabled) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -279,8 +305,9 @@ fun FocusModeOverlay(
                     .background(AtlasCard)
                     .border(1.dp, AtlasBorder, RoundedCornerShape(20.dp))
                     .clickable {
-                        val nextIndex = (soundTracks.indexOf(selectedSoundTrack) + 1) % soundTracks.size
-                        selectedSoundTrack = soundTracks[nextIndex]
+                        val tracks = AmbientSoundPlayer.Track.entries
+                        val nextIndex = (tracks.indexOf(selectedSoundTrack) + 1) % tracks.size
+                        selectedSoundTrack = tracks[nextIndex]
                     }
                     .padding(horizontal = 16.dp, vertical = 12.dp)
                     .testTag("lofi_sound_bar")
@@ -300,7 +327,7 @@ fun FocusModeOverlay(
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = "Lo-fi Focus • $selectedSoundTrack",
+                                text = "Lo-fi Focus • ${selectedSoundTrack.label}",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = TextPureWhite,
                                 fontWeight = FontWeight.Normal
@@ -326,6 +353,7 @@ fun FocusModeOverlay(
                         )
                     }
                 }
+            }
             }
 
             Spacer(modifier = Modifier.height(18.dp))
@@ -427,8 +455,8 @@ fun FocusModeOverlay(
         }
     }
 
-    // Behavioral Psychology Exit Friction Dialog
-    if (showExitDialog) {
+    // Behavioral Psychology Exit Friction Dialog (only when the setting is on)
+    if (showExitDialog && exitFrictionEnabled) {
         AlertDialog(
             onDismissRequest = { showExitDialog = false },
             containerColor = AtlasCardElevated,

@@ -58,6 +58,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ui.appearance.ClockStylePreset
 import com.example.ui.theme.CrimsonElectric
 import com.example.ui.theme.CrimsonGlow
 import com.example.ui.theme.GlassBorderBrush
@@ -79,6 +80,7 @@ import kotlin.math.sin
 @Composable
 fun AtlasClockHeader(
     clockStyle: ClockStyle = ClockStyle.NEO_GLASS,
+    weather: com.example.util.WeatherSnapshot? = null,
     onToggleClockStyle: () -> Unit = {},
     onOpenGestureOverview: () -> Unit,
     onLockScreen: () -> Unit = {},
@@ -87,6 +89,7 @@ fun AtlasClockHeader(
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val appearance = com.example.ui.appearance.LocalAppearanceState.current
     var hours by remember { mutableStateOf("09") }
     var minutes by remember { mutableStateOf("41") }
     var seconds by remember { mutableStateOf("00") }
@@ -96,15 +99,15 @@ fun AtlasClockHeader(
     var rawMinutes by remember { mutableFloatStateOf(0f) }
     var rawHours by remember { mutableFloatStateOf(0f) }
 
-    LaunchedEffect(clockStyle) {
-        val hourFormat = SimpleDateFormat("HH", Locale.getDefault())
+    LaunchedEffect(clockStyle, appearance.clockIs24Hour, appearance.clockDateFormat, appearance.clockShowSeconds) {
+        val hourFormat = SimpleDateFormat(if (appearance.clockIs24Hour) "HH" else "hh", Locale.getDefault())
         val minFormat = SimpleDateFormat("mm", Locale.getDefault())
         val secFormat = SimpleDateFormat("ss", Locale.getDefault())
         val amPmFormat = SimpleDateFormat("a", Locale.getDefault())
-        val dateFormat = SimpleDateFormat("EEEE, MMM d", Locale.getDefault())
+        val dateFormat = SimpleDateFormat(appearance.clockDateFormat, Locale.getDefault())
 
         val isChronograph = clockStyle == ClockStyle.CHRONOGRAPH
-        val updateInterval = if (isChronograph) 100L else 500L
+        val updateInterval = if (isChronograph || appearance.clockShowSeconds) 100L else 500L
         var lastSec = -1
 
         while (true) {
@@ -173,10 +176,12 @@ fun AtlasClockHeader(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = "21°C • Clear",
+                    text = weather?.let { "${it.temperatureC}°C • ${it.condition}" }
+                        ?: "Weather unavailable",
                     style = MaterialTheme.typography.labelSmall,
                     color = TextPureWhite,
-                    fontSize = 11.sp
+                    fontSize = 11.sp,
+                    maxLines = 1
                 )
             }
 
@@ -270,13 +275,76 @@ fun AtlasClockHeader(
                 .testTag("atlas_large_clock")
         ) {
             AnimatedContent(
-                targetState = clockStyle,
-                transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) },
+                targetState = appearance.clockStylePreset,
+                transitionSpec = { fadeIn(tween(250)) togetherWith fadeOut(tween(200)) },
                 label = "clock_style_animation"
-            ) { style ->
-                when (style) {
-                    ClockStyle.NEO_GLASS -> {
-                        NeoGlassDigitalClock(
+            ) { preset ->
+                when (preset) {
+                    ClockStylePreset.MINIMAL -> {
+                        MinimalLiveClock(
+                            hours = hours,
+                            minutes = minutes,
+                            seconds = seconds,
+                            showSeconds = appearance.clockShowSeconds
+                        )
+                    }
+                    ClockStylePreset.APPLE_STYLE -> {
+                        AppleStyleLiveClock(
+                            hours = hours,
+                            minutes = minutes,
+                            seconds = seconds,
+                            showSeconds = appearance.clockShowSeconds
+                        )
+                    }
+                    ClockStylePreset.NOTHING_STYLE, ClockStylePreset.NOTHING_INSPIRED -> {
+                        NothingStyleLiveClock(
+                            hours = hours,
+                            minutes = minutes,
+                            seconds = seconds,
+                            pulseAlpha = { pulseAlphaState.value }
+                        )
+                    }
+                    ClockStylePreset.PIXEL_STYLE -> {
+                        PixelStyleLiveClock(
+                            hours = hours,
+                            minutes = minutes
+                        )
+                    }
+                    ClockStylePreset.HYPEROS -> {
+                        HyperOsLiveClock(
+                            hours = hours,
+                            minutes = minutes
+                        )
+                    }
+                    ClockStylePreset.STEALTHICS -> {
+                        StealthicsHudLiveClock(
+                            hours = hours,
+                            minutes = minutes,
+                            seconds = seconds,
+                            pulseAlpha = { pulseAlphaState.value }
+                        )
+                    }
+                    ClockStylePreset.CYBER -> {
+                        CyberpunkLiveClock(
+                            hours = hours,
+                            minutes = minutes,
+                            seconds = seconds
+                        )
+                    }
+                    ClockStylePreset.DIGITAL, ClockStylePreset.DIGITAL_BOLD -> {
+                        DigitalSegmentLiveClock(
+                            hours = hours,
+                            minutes = minutes
+                        )
+                    }
+                    ClockStylePreset.OUTLINE -> {
+                        OutlineLiveClock(
+                            hours = hours,
+                            minutes = minutes
+                        )
+                    }
+                    ClockStylePreset.GLASS, ClockStylePreset.MODERN -> {
+                        GlassCardLiveClock(
                             hours = hours,
                             minutes = minutes,
                             seconds = seconds,
@@ -284,21 +352,34 @@ fun AtlasClockHeader(
                             pulseAlpha = { pulseAlphaState.value }
                         )
                     }
-                    ClockStyle.STACKED_DIGITAL -> {
-                        StackedDigitalClock(
-                            hours = hours,
-                            minutes = minutes,
-                            seconds = seconds,
-                            pulseAlpha = { pulseAlphaState.value }
-                        )
-                    }
-                    ClockStyle.CHRONOGRAPH -> {
-                        ChronographClock(
-                            rawHours = rawHours,
-                            rawMinutes = rawMinutes,
-                            rawSeconds = rawSeconds,
-                            digitalTime = "$hours:$minutes"
-                        )
+                    else -> {
+                        when (clockStyle) {
+                            ClockStyle.STACKED_DIGITAL -> {
+                                StackedDigitalClock(
+                                    hours = hours,
+                                    minutes = minutes,
+                                    seconds = seconds,
+                                    pulseAlpha = { pulseAlphaState.value }
+                                )
+                            }
+                            ClockStyle.CHRONOGRAPH -> {
+                                ChronographClock(
+                                    rawHours = rawHours,
+                                    rawMinutes = rawMinutes,
+                                    rawSeconds = rawSeconds,
+                                    digitalTime = "$hours:$minutes"
+                                )
+                            }
+                            else -> {
+                                NeoGlassDigitalClock(
+                                    hours = hours,
+                                    minutes = minutes,
+                                    seconds = seconds,
+                                    amPm = amPm,
+                                    pulseAlpha = { pulseAlphaState.value }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -686,5 +767,338 @@ private fun ChronographClock(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun MinimalLiveClock(
+    hours: String,
+    minutes: String,
+    seconds: String,
+    showSeconds: Boolean
+) {
+    val clockAccent = com.example.ui.theme.LocalAtlasAccent.current
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = "$hours:$minutes",
+            style = MaterialTheme.typography.displayLarge.copy(
+                fontWeight = FontWeight.ExtraLight,
+                fontSize = 68.sp,
+                letterSpacing = (-2).sp
+            ),
+            color = TextPureWhite
+        )
+        if (showSeconds) {
+            Text(
+                text = seconds,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp
+                ),
+                color = clockAccent
+            )
+        }
+    }
+}
+
+@Composable
+private fun AppleStyleLiveClock(
+    hours: String,
+    minutes: String,
+    seconds: String,
+    showSeconds: Boolean
+) {
+    val clockAccent = com.example.ui.theme.LocalAtlasAccent.current
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = "$hours:$minutes",
+            style = MaterialTheme.typography.displayLarge.copy(
+                fontWeight = FontWeight.Medium,
+                fontSize = 72.sp,
+                letterSpacing = (-2.5).sp
+            ),
+            color = TextPureWhite
+        )
+        if (showSeconds) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0x22FFFFFF))
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    text = seconds,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp
+                    ),
+                    color = clockAccent
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NothingStyleLiveClock(
+    hours: String,
+    minutes: String,
+    seconds: String,
+    pulseAlpha: () -> Float
+) {
+    val clockAccent = com.example.ui.theme.LocalAtlasAccent.current
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Text(
+            text = "$hours:$minutes",
+            style = MaterialTheme.typography.displayLarge.copy(
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                fontSize = 64.sp,
+                letterSpacing = 2.sp
+            ),
+            color = TextPureWhite
+        )
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .graphicsLayer { alpha = pulseAlpha() }
+                .clip(CircleShape)
+                .background(clockAccent)
+        )
+    }
+}
+
+@Composable
+private fun PixelStyleLiveClock(
+    hours: String,
+    minutes: String
+) {
+    val clockAccent = com.example.ui.theme.LocalAtlasAccent.current
+    Column {
+        Text(
+            text = hours,
+            style = MaterialTheme.typography.displayLarge.copy(
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 58.sp,
+                lineHeight = 54.sp
+            ),
+            color = TextPureWhite
+        )
+        Text(
+            text = minutes,
+            style = MaterialTheme.typography.displayLarge.copy(
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 58.sp,
+                lineHeight = 54.sp
+            ),
+            color = clockAccent
+        )
+    }
+}
+
+@Composable
+private fun HyperOsLiveClock(
+    hours: String,
+    minutes: String
+) {
+    val clockAccent = com.example.ui.theme.LocalAtlasAccent.current
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = hours,
+            style = MaterialTheme.typography.displayLarge.copy(
+                fontWeight = FontWeight.Black,
+                fontSize = 66.sp,
+                letterSpacing = (-2).sp
+            ),
+            color = TextPureWhite
+        )
+        Text(
+            text = "/",
+            style = MaterialTheme.typography.displayMedium.copy(
+                fontWeight = FontWeight.Thin,
+                fontSize = 50.sp
+            ),
+            color = clockAccent
+        )
+        Text(
+            text = minutes,
+            style = MaterialTheme.typography.displayLarge.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = 66.sp,
+                letterSpacing = (-2).sp
+            ),
+            color = clockAccent
+        )
+    }
+}
+
+@Composable
+private fun StealthicsHudLiveClock(
+    hours: String,
+    minutes: String,
+    seconds: String,
+    pulseAlpha: () -> Float
+) {
+    val clockAccent = com.example.ui.theme.LocalAtlasAccent.current
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color(0x22000000))
+            .border(1.dp, clockAccent.copy(alpha = 0.4f), RoundedCornerShape(16.dp))
+            .padding(horizontal = 14.dp, vertical = 6.dp)
+    ) {
+        Text(
+            text = "[ ",
+            style = MaterialTheme.typography.displayMedium.copy(
+                fontWeight = FontWeight.Thin,
+                fontSize = 46.sp
+            ),
+            color = clockAccent
+        )
+        Text(
+            text = "$hours:$minutes",
+            style = MaterialTheme.typography.displayLarge.copy(
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Bold,
+                fontSize = 52.sp,
+                letterSpacing = 1.sp
+            ),
+            color = TextPureWhite
+        )
+        Text(
+            text = " :$seconds",
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 18.sp
+            ),
+            color = clockAccent
+        )
+        Text(
+            text = " ]",
+            style = MaterialTheme.typography.displayMedium.copy(
+                fontWeight = FontWeight.Thin,
+                fontSize = 46.sp
+            ),
+            color = clockAccent
+        )
+    }
+}
+
+@Composable
+private fun CyberpunkLiveClock(
+    hours: String,
+    minutes: String,
+    seconds: String
+) {
+    val clockAccent = com.example.ui.theme.LocalAtlasAccent.current
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "SYS.TIME >> ",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    letterSpacing = 1.sp
+                ),
+                color = clockAccent
+            )
+            Text(
+                text = "0x$seconds",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp
+                ),
+                color = TextSecondary
+            )
+        }
+        Text(
+            text = "$hours:$minutes",
+            style = MaterialTheme.typography.displayLarge.copy(
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Black,
+                fontSize = 60.sp,
+                letterSpacing = 2.sp
+            ),
+            color = TextPureWhite
+        )
+    }
+}
+
+@Composable
+private fun DigitalSegmentLiveClock(
+    hours: String,
+    minutes: String
+) {
+    val clockAccent = com.example.ui.theme.LocalAtlasAccent.current
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = "$hours:$minutes",
+            style = MaterialTheme.typography.displayLarge.copy(
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 64.sp,
+                letterSpacing = 3.sp
+            ),
+            color = clockAccent
+        )
+    }
+}
+
+@Composable
+private fun OutlineLiveClock(
+    hours: String,
+    minutes: String
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            text = "$hours:$minutes",
+            style = MaterialTheme.typography.displayLarge.copy(
+                fontWeight = FontWeight.ExtraLight,
+                fontSize = 72.sp,
+                letterSpacing = (-2).sp
+            ),
+            color = TextPureWhite.copy(alpha = 0.9f)
+        )
+    }
+}
+
+@Composable
+private fun GlassCardLiveClock(
+    hours: String,
+    minutes: String,
+    seconds: String,
+    amPm: String,
+    pulseAlpha: () -> Float
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(GlassCardBackgroundBrush)
+            .border(1.dp, GlassBorderBrush, RoundedCornerShape(20.dp))
+            .padding(horizontal = 16.dp, vertical = 10.dp)
+    ) {
+        NeoGlassDigitalClock(
+            hours = hours,
+            minutes = minutes,
+            seconds = seconds,
+            amPm = amPm,
+            pulseAlpha = pulseAlpha
+        )
     }
 }

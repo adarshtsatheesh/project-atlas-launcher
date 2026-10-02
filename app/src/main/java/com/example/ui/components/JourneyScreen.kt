@@ -156,6 +156,7 @@ fun JourneyScreen(
     currentFormTitle: String = "Focused Starter",
     nextEvolutionTitle: String = "Level 2 • Disciplined Builder",
     momentumDays: Int = 1,
+    unlockedBadges: Set<String> = emptySet(),
     colorPalette: ColorPalette? = null,
     onClaimXp: (Int) -> Unit = {},
     onUpdateIdentityTitle: (IdentityTitle) -> Unit = {},
@@ -291,15 +292,43 @@ fun JourneyScreen(
         )
     }
 
-    // Badges
-    val badges = remember {
+    // Badges: every status is derived from real progression (streak / XP / unlocks)
+    val badges = remember(unlockedBadges, momentumDays, userTotalXp, completedTasksCount) {
+        fun status(unmetLabel: String, met: Boolean, badgeId: String): String = when {
+            met || badgeId in unlockedBadges -> "Unlocked"
+            else -> unmetLabel
+        }
         listOf(
-            EvolutionBadge("first_mission", "First Mission", "The Spark", Icons.Default.Bolt, "Rare", "Day 1", "You conquered static inertia and finished your first mission."),
-            EvolutionBadge("streak_7", "7 Day Streak", "The Baseline", Icons.Default.LocalFireDepartment, "Epic", "Active", "Seven days of unbroken momentum."),
-            EvolutionBadge("streak_30", "30 Day Streak", "The Shift", Icons.Default.AutoAwesome, "Legendary", "In Progress", "Thirty days of daily execution."),
-            EvolutionBadge("xp_500", "500 XP", "Initiate", Icons.Default.Star, "Rare", "Unlocked", "Amassed 500 units of deliberate momentum."),
-            EvolutionBadge("early_bird", "Dawn Walker", "Pre 08:00 AM", Icons.Default.SelfImprovement, "Epic", "Active", "Won the morning before distractions could interfere."),
-            EvolutionBadge("night_warrior", "Night Warrior", "Zero Postponing", Icons.Default.Shield, "Rare", "Unlocked", "Closed out the day with zero postponed priorities.")
+            EvolutionBadge(
+                "first_mission", "First Mission", "The Spark", Icons.Default.Bolt, "Rare",
+                status("Complete 1 task", completedTasksCount > 0, "first_mission"),
+                "You conquered static inertia and finished your first mission."
+            ),
+            EvolutionBadge(
+                "streak_7", "7 Day Streak", "The Baseline", Icons.Default.LocalFireDepartment, "Epic",
+                status("$momentumDays/7 days", momentumDays >= 7, "streak_7"),
+                "Seven days of unbroken momentum."
+            ),
+            EvolutionBadge(
+                "streak_30", "30 Day Streak", "The Shift", Icons.Default.AutoAwesome, "Legendary",
+                status("$momentumDays/30 days", momentumDays >= 30, "streak_30"),
+                "Thirty days of daily execution."
+            ),
+            EvolutionBadge(
+                "xp_500", "500 XP", "Initiate", Icons.Default.Star, "Rare",
+                status("$userTotalXp/500 XP", userTotalXp >= 500, "xp_500"),
+                "Amassed 500 units of deliberate momentum."
+            ),
+            EvolutionBadge(
+                "early_bird", "Dawn Walker", "Pre 08:00 AM", Icons.Default.SelfImprovement, "Epic",
+                status("Focus before 08:00", false, "early_bird"),
+                "Won the morning before distractions could interfere."
+            ),
+            EvolutionBadge(
+                "night_warrior", "Night Warrior", "Zero Postponing", Icons.Default.Shield, "Rare",
+                status("Finish every task today", false, "night_warrior"),
+                "Closed out the day with zero postponed priorities."
+            )
         )
     }
 
@@ -735,33 +764,33 @@ fun JourneyScreen(
 
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 EvolutionGrowthCard(
-                    xp = "+50 XP",
-                    title = "Morning Mission",
-                    subtitle = "Completed before friction could accumulate",
-                    icon = Icons.Default.Bolt,
-                    completed = true,
-                    themeColors = themeColors
-                )
-                EvolutionGrowthCard(
-                    xp = "+40 XP",
-                    title = "Deep Focus (45 min)",
-                    subtitle = "Zero distraction cognitive flow state",
-                    icon = Icons.Default.SelfImprovement,
-                    completed = totalFocusMinutes >= 25,
-                    themeColors = themeColors
-                )
-                EvolutionGrowthCard(
-                    xp = "+30 XP",
-                    title = "Workout",
-                    subtitle = "Physical stamina and energy baseline renewed",
-                    icon = Icons.Default.FitnessCenter,
-                    completed = true,
-                    themeColors = themeColors
-                )
-                EvolutionGrowthCard(
                     xp = "+20 XP",
-                    title = "Reading (20 min)",
-                    subtitle = "High-leverage knowledge synthesized",
+                    title = "Task completed",
+                    subtitle = if (completedTasksCount > 0) "$completedTasksCount of today's tasks done" else "No tasks completed yet today",
+                    icon = Icons.Default.CheckCircle,
+                    completed = completedTasksCount > 0,
+                    themeColors = themeColors
+                )
+                EvolutionGrowthCard(
+                    xp = "+1 XP/min",
+                    title = "Deep focus session",
+                    subtitle = if (totalFocusMinutes > 0) "$totalFocusMinutes minutes logged today" else "Start a sprint to earn focus XP",
+                    icon = Icons.Default.SelfImprovement,
+                    completed = totalFocusMinutes >= 10,
+                    themeColors = themeColors
+                )
+                EvolutionGrowthCard(
+                    xp = "+50 XP",
+                    title = "Daily momentum claim",
+                    subtitle = if (claimedTodayXp) "Claimed for today" else "Tap Claim to bank today's bonus",
+                    icon = Icons.Default.Bolt,
+                    completed = claimedTodayXp,
+                    themeColors = themeColors
+                )
+                EvolutionGrowthCard(
+                    xp = "NOTES",
+                    title = "Notes written",
+                    subtitle = if (notesCount > 0) "$notesCount notebook pages saved" else "Your notebook is still empty",
                     icon = Icons.Default.MenuBook,
                     completed = notesCount > 0,
                     themeColors = themeColors

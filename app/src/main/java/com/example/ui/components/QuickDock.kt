@@ -1,5 +1,14 @@
 package com.example.ui.components
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -29,12 +38,14 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -62,6 +73,7 @@ fun QuickDock(
     pinnedApps: List<AppItem>,
     iconSize: AppIconSize = AppIconSize.DEFAULT,
     hideLabels: Boolean = true,
+    isEditMode: Boolean = false,
     onLaunchApp: (AppItem) -> Unit,
     onTogglePin: (AppItem) -> Unit,
     onOpenAppDrawer: () -> Unit,
@@ -82,12 +94,47 @@ fun QuickDock(
     val appearance = com.example.ui.appearance.LocalAppearanceState.current
     val dockRadius = (appearance.cardRadiusDp + 4).dp
 
+    // Spring physics dock scaling in edit mode
+    val dockScale by animateFloatAsState(
+        targetValue = if (isEditMode) 0.93f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = 0.8f,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "dock_scale"
+    )
+
+    // iOS iconic gentle icon wiggle & float in edit mode
+    val infiniteTransition = rememberInfiniteTransition(label = "dock_icon_wiggle")
+    val wiggleAngle by infiniteTransition.animateFloat(
+        initialValue = -2.2f,
+        targetValue = 2.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(150, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "icon_wiggle"
+    )
+    val floatAnim by infiniteTransition.animateFloat(
+        initialValue = -1.2f,
+        targetValue = 1.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(170, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "icon_float"
+    )
+
     Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp)
             .navigationBarsPadding()
-            .padding(bottom = 6.dp),
+            .padding(bottom = 6.dp)
+            .graphicsLayer {
+                scaleX = dockScale
+                scaleY = dockScale
+            },
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // Essential 4-5 apps inside a luxury floating frosted glass dock
@@ -104,11 +151,22 @@ fun QuickDock(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                essentialApps.forEach { app ->
+                essentialApps.forEachIndexed { index, app ->
+                    val itemFloat = if (isEditMode) {
+                        if (index % 2 == 0) floatAnim else -floatAnim
+                    } else 0f
+                    val itemAngle = if (isEditMode) {
+                        if (index % 2 == 0) wiggleAngle else -wiggleAngle
+                    } else 0f
+
                     DockItem(
                         app = app,
                         iconSize = iconSize,
-                        hideLabel = hideLabels,
+                        hideLabel = hideLabels && !appearance.iconShowLabels,
+                        floatOffsetY = itemFloat,
+                        wiggleRotationZ = itemAngle,
+                        cornerRadiusPercent = appearance.iconCornerRadiusPercent,
+                        customSizeDp = appearance.iconSizeDp,
                         onClick = { onLaunchApp(app) },
                         onLongClick = { onTogglePin(app) }
                     )
@@ -144,15 +202,25 @@ private fun DockItem(
     app: AppItem,
     iconSize: AppIconSize = AppIconSize.DEFAULT,
     hideLabel: Boolean = true,
+    floatOffsetY: Float = 0f,
+    wiggleRotationZ: Float = 0f,
+    cornerRadiusPercent: Int = 24,
+    customSizeDp: Int = 52,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    val boxSize = (iconSize.dpSize + 4).dp
-    val iconDp = iconSize.dpSize.dp
+    val effectiveDp = customSizeDp.dp
+    val boxSize = effectiveDp + 6.dp
+    val iconDp = effectiveDp
+    val shapeRadius = (cornerRadiusPercent * 0.26f).dp.coerceAtLeast(4.dp)
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
+            .graphicsLayer {
+                translationY = floatOffsetY
+                rotationZ = wiggleRotationZ
+            }
             .clip(RoundedCornerShape(18.dp))
             .combinedClickable(
                 onClick = onClick,
@@ -176,7 +244,7 @@ private fun DockItem(
                     contentDescription = app.name,
                     modifier = Modifier
                         .size(iconDp)
-                        .clip(CircleShape)
+                        .clip(RoundedCornerShape(shapeRadius))
                 )
             } else {
                 // Authentic colorful Android app representation (Phone green, Messages blue, Browser, Camera)
@@ -185,7 +253,7 @@ private fun DockItem(
                         Box(
                             modifier = Modifier
                                 .size(iconDp)
-                                .clip(CircleShape)
+                                .clip(RoundedCornerShape(shapeRadius))
                                 .background(Color(0xFF2E7D32)),
                             contentAlignment = Alignment.Center
                         ) {
