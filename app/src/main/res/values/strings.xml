@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Atlas</string>
+    <string name="accessibility_service_description">Used exclusively to turn off and lock the device screen when you double-tap on the home screen or tap the lock button.</string>
+    <string name="device_admin_description">Allows Atlas to lock the screen when you double-tap the home screen.</string>
+</resources>
