@@ -44,8 +44,13 @@ fun MyApplicationTheme(
         )
     }
 
-    val typography = remember(appearance.fontFamily) {
-        TypographyManager.getTypography(appearance.fontFamily)
+    val typography = remember(
+        appearance.fontFamily,
+        appearance.fontSizeScale,
+        appearance.fontLineHeightMultiplier,
+        appearance.fontBoldness
+    ) {
+        TypographyManager.getTypography(appearance)
     }
 
     val levelThemeColors = remember(accentColor, appearance.themeMode) {

@@ -17,7 +17,7 @@ import java.util.concurrent.ConcurrentHashMap
 object TypographyManager {
 
     private val fontFamilyCache = ConcurrentHashMap<AppFontFamily, FontFamily>()
-    private val typographyCache = ConcurrentHashMap<AppFontFamily, Typography>()
+    private val typographyCache = ConcurrentHashMap<String, Typography>()
 
     /**
      * Retrieves or builds the [FontFamily] backed by bundled static TTF fonts.
@@ -35,12 +35,15 @@ object TypographyManager {
 
     /**
      * Builds and caches a full Material Design 3 [Typography] configuration
-     * where all scales inherit the chosen typeface.
+     * where all scales inherit the chosen typeface, the selected font size scale,
+     * line height multiplier and boldness from the Appearance Studio.
      */
-    fun getTypography(font: AppFontFamily): Typography {
-        return typographyCache.getOrPut(font) {
-            val family = getFontFamily(font)
-            Typography(
+    fun getTypography(appearance: AppearanceState): Typography {
+        val cacheKey = "${appearance.fontFamily.name}|${appearance.fontSizeScale.name}|" +
+            "${appearance.fontLineHeightMultiplier}|${appearance.fontBoldness.name}"
+        return typographyCache.getOrPut(cacheKey) {
+            val family = getFontFamily(appearance.fontFamily)
+            val base = Typography(
                 displayLarge = TextStyle(
                     fontFamily = family,
                     fontWeight = FontWeight.Light,
@@ -146,6 +149,39 @@ object TypographyManager {
                     lineHeight = 14.sp,
                     letterSpacing = 0.8.sp
                 )
+            )
+
+            // Apply the user's typography controls from the Appearance Studio.
+            val sizeScale = appearance.fontSizeScale.scale
+            val lineHeightScale = sizeScale * appearance.fontLineHeightMultiplier
+            val forcedWeight = appearance.fontBoldness.weight
+            val applyControls: TextStyle.() -> TextStyle = {
+                var styled = copy(
+                    fontSize = fontSize * sizeScale,
+                    lineHeight = lineHeight * lineHeightScale
+                )
+                if (appearance.fontBoldness != FontBoldnessOption.NORMAL) {
+                    styled = styled.copy(fontWeight = forcedWeight)
+                }
+                styled
+            }
+
+            base.copy(
+                displayLarge = base.displayLarge.applyControls(),
+                displayMedium = base.displayMedium.applyControls(),
+                displaySmall = base.displaySmall.applyControls(),
+                headlineLarge = base.headlineLarge.applyControls(),
+                headlineMedium = base.headlineMedium.applyControls(),
+                headlineSmall = base.headlineSmall.applyControls(),
+                titleLarge = base.titleLarge.applyControls(),
+                titleMedium = base.titleMedium.applyControls(),
+                titleSmall = base.titleSmall.applyControls(),
+                bodyLarge = base.bodyLarge.applyControls(),
+                bodyMedium = base.bodyMedium.applyControls(),
+                bodySmall = base.bodySmall.applyControls(),
+                labelLarge = base.labelLarge.applyControls(),
+                labelMedium = base.labelMedium.applyControls(),
+                labelSmall = base.labelSmall.applyControls()
             )
         }
     }

@@ -59,6 +59,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
@@ -119,6 +120,52 @@ fun TodayMissionTaskConsole(
 
     val accent = com.example.ui.theme.LocalAtlasAccent.current
 
+    // Real widget styling driven by the Appearance Studio (Layout category)
+    val appearance = com.example.ui.appearance.LocalAppearanceState.current
+    val widgetShape = RoundedCornerShape(26.dp)
+    val widgetFillAlpha = ((100 - appearance.widgetTransparency).coerceIn(15, 100)) / 100f
+    val widgetFillBrush: Brush = when (appearance.widgetStyle) {
+        com.example.ui.appearance.WidgetStyle.MINIMAL ->
+            Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
+        com.example.ui.appearance.WidgetStyle.OUTLINED ->
+            Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
+        com.example.ui.appearance.WidgetStyle.SOLID ->
+            Brush.horizontalGradient(listOf(Color(0xFF0B0D12), Color(0xFF0B0D12)))
+        com.example.ui.appearance.WidgetStyle.MODERN ->
+            Brush.horizontalGradient(
+                listOf(
+                    accent.copy(alpha = 0.18f * widgetFillAlpha),
+                    Color(0xFF10121A).copy(alpha = 0.95f)
+                )
+            )
+        com.example.ui.appearance.WidgetStyle.GLASS,
+        com.example.ui.appearance.WidgetStyle.ADAPTIVE ->
+            Brush.verticalGradient(
+                listOf(
+                    Color(0xFF242732).copy(alpha = widgetFillAlpha * 0.55f),
+                    Color(0xFF101218).copy(alpha = widgetFillAlpha * 0.42f)
+                )
+            )
+    }
+    val widgetBorderBrush: Brush = when (appearance.widgetStyle) {
+        com.example.ui.appearance.WidgetStyle.MINIMAL ->
+            Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
+        com.example.ui.appearance.WidgetStyle.OUTLINED ->
+            Brush.horizontalGradient(listOf(accent.copy(alpha = 0.9f), accent.copy(alpha = 0.4f)))
+        com.example.ui.appearance.WidgetStyle.SOLID ->
+            Brush.horizontalGradient(listOf(Color(0x22FFFFFF), Color(0x14FFFFFF)))
+        com.example.ui.appearance.WidgetStyle.MODERN ->
+            Brush.horizontalGradient(listOf(accent.copy(alpha = 0.6f), Color(0x28FFFFFF)))
+        com.example.ui.appearance.WidgetStyle.GLASS,
+        com.example.ui.appearance.WidgetStyle.ADAPTIVE ->
+            if (isEditMode) SolidColor(accent.copy(alpha = 0.6f)) else GlassBorderBrush
+    }
+    val widgetBorderWidth = when (appearance.widgetStyle) {
+        com.example.ui.appearance.WidgetStyle.MINIMAL -> 0.dp
+        com.example.ui.appearance.WidgetStyle.OUTLINED -> 1.5.dp
+        else -> if (isEditMode) 1.5.dp else 1.dp
+    }
+
     Box(
         modifier = modifier
             .graphicsLayer {
@@ -128,13 +175,9 @@ fun TodayMissionTaskConsole(
             }
             .fillMaxWidth()
             .padding(horizontal = 24.dp)
-            .clip(RoundedCornerShape(26.dp))
-            .background(GlassCardBackgroundBrush)
-            .border(
-                if (isEditMode) 1.5.dp else 1.dp,
-                if (isEditMode) androidx.compose.ui.graphics.SolidColor(accent.copy(alpha = 0.6f)) else GlassBorderBrush,
-                RoundedCornerShape(26.dp)
-            )
+            .clip(widgetShape)
+            .background(widgetFillBrush, widgetShape)
+            .border(widgetBorderWidth, widgetBorderBrush, widgetShape)
             .pointerInput(Unit) {
                 detectTapGestures(
                     onDoubleTap = {
