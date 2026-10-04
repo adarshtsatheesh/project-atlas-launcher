@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Offset
@@ -29,8 +30,15 @@ fun AtlasWallpaperBackdrop(
     dimAlpha: Float = 0.35f,
     modifier: Modifier = Modifier
 ) {
+    // Cache the existence check: File.exists() is disk I/O and this condition is
+    // re-evaluated on every recomposition of the home screen (dim/slider updates).
+    val hasCustomImage = remember(wallpaper, customImagePath) {
+        wallpaper == BuiltInWallpaper.CUSTOM_GALLERY &&
+            !customImagePath.isNullOrEmpty() &&
+            File(customImagePath).exists()
+    }
     Box(modifier = modifier.fillMaxSize()) {
-        if (wallpaper == BuiltInWallpaper.CUSTOM_GALLERY && !customImagePath.isNullOrEmpty() && File(customImagePath).exists()) {
+        if (hasCustomImage) {
             // Render custom photo from gallery with Coil
             AsyncImage(
                 model = File(customImagePath),

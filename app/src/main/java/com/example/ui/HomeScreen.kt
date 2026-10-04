@@ -68,18 +68,16 @@ import com.example.ui.appearance.LiveEditorTopBar
 import com.example.ui.components.AiAssistantScreen
 import com.example.ui.components.AmbientLockScreen
 import com.example.ui.components.AppDrawerSheet
-import com.example.ui.components.AtlasClockHeader
 import com.example.ui.components.FocusModeOverlay
 import com.example.ui.components.GestureOverviewSheet
 import com.example.ui.components.InfiniteNotesScreen
 import com.example.ui.components.JourneyScreen
+import com.example.ui.components.LauncherHomeCanvas
 import com.example.ui.components.MissionsScreen
 import com.example.ui.components.MountainMistBackdrop
 import com.example.ui.components.AtlasWallpaperBackdrop
 import com.example.ui.components.OnboardingSheet
-import com.example.ui.components.QuickDock
 import com.example.ui.components.SettingsScreen
-import com.example.ui.components.TodayMissionTaskConsole
 import com.example.ui.theme.AtlasBackground
 import com.example.ui.theme.AtlasBorder
 import com.example.ui.theme.AtlasCard
@@ -160,9 +158,6 @@ fun HomeScreen(
             .background(AtlasBackground)
             .pointerInput(uiState.isEditMode) {
                 detectTapGestures(
-                    onDoubleTap = {
-                        if (!uiState.isEditMode) lockDeviceAction()
-                    },
                     onTap = {
                         if (uiState.isEditMode && uiState.activeEditCategory != null) {
                             viewModel.setEditCategory(null)
@@ -255,6 +250,23 @@ fun HomeScreen(
             modifier = if (editModeBlur > 0.dp) Modifier.blur(editModeBlur) else Modifier
         )
 
+        // Empty-area catcher (bottom layer): double-tap-to-lock and long-press
+        // editor entry ONLY fire on bare home screen regions (Nova/OneUI/ColorOS
+        // behavior). The clock, widget, icons and dock render ABOVE this and
+        // consume their own taps, so they never trigger either gesture.
+        if (!uiState.isEditMode) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTapGestures(
+                            onDoubleTap = { lockDeviceAction() },
+                            onLongPress = { viewModel.openEditMode() }
+                        )
+                    }
+            )
+        }
+
         if (uiState.isEditMode) {
             Box(
                 modifier = Modifier
@@ -263,80 +275,48 @@ fun HomeScreen(
             )
         }
 
-        // Main Calm Launcher Home View
+        // Main Calm Launcher Home View — the shared [LauncherHomeCanvas] keeps
+        // the real home screen and every editor preview pixel-identical.
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .then(
-                    if (!uiState.appearanceState.layoutHideStatusBar) Modifier.statusBarsPadding()
-                    else Modifier.padding(top = 10.dp)
-                )
                 .graphicsLayer {
                     scaleX = homeContentScale
                     scaleY = homeContentScale
                     translationY = homeContentTranslationY.toPx()
                 }
         ) {
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-            ) {
-                // High-End Multi-Style Clock (Neo-Glass, Stacked Digital, Chronograph)
-                AtlasClockHeader(
-                    clockStyle = uiState.selectedClockStyle,
-                    weather = uiState.weather,
-                    onToggleClockStyle = {
-                        if (uiState.isEditMode) {
-                            viewModel.setEditCategory(com.example.ui.viewmodel.EditCategory.CLOCK)
-                        } else {
-                            viewModel.toggleClockStyle()
-                        }
-                    },
-                    onOpenGestureOverview = { if (!uiState.isEditMode) viewModel.openGestureOverview() },
-                    onLockScreen = { if (!uiState.isEditMode) lockDeviceAction() },
-                    onOpenAmbientLock = { if (!uiState.isEditMode) viewModel.openAmbientLock() },
-                    onOpenProgressStats = { if (!uiState.isEditMode) viewModel.openProgress() },
-                    onOpenSettings = { if (!uiState.isEditMode) viewModel.openSettings() }
-                )
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Unified Minimal Glassmorphism Today's Tasks & Mission Console
-                TodayMissionTaskConsole(
-                    activeMission = uiState.activeMission,
-                    tasks = uiState.todayTasks,
-                    isEditMode = uiState.isEditMode,
-                    onEditWidget = { viewModel.setEditCategory(com.example.ui.viewmodel.EditCategory.WIDGETS) },
-                    onStartFocus = { if (!uiState.isEditMode) viewModel.startFocusMode() },
-                    onToggleTask = { viewModel.toggleTaskCompletion(it) },
-                    onSetAsMission = { viewModel.setActiveMission(it) },
-                    onQuickAddTask = { title ->
-                        viewModel.createTask(
-                            title = title,
-                            estimatedMinutes = 25,
-                            priority = 2,
-                            scheduledDate = System.currentTimeMillis()
-                        )
-                    },
-                    onOpenCalendarPlanner = { if (!uiState.isEditMode) viewModel.openMissions() },
-                    modifier = Modifier.padding(horizontal = (uiState.appearanceState.layoutWidgetPaddingDp - 8).coerceAtLeast(0).dp)
-                )
-
-                Spacer(modifier = Modifier.height(16.dp))
-            }
-
-            // Bottom Dock: 4 Essential Apps (Phone, Messages, Browser, Camera) & Swipe Up Guide
-            if (!uiState.appearanceState.layoutHideDock || uiState.isEditMode) {
-                QuickDock(
-                    pinnedApps = uiState.pinnedApps,
-                    iconSize = uiState.appIconSize,
-                    hideLabels = uiState.hideDockLabels,
-                    isEditMode = uiState.isEditMode,
-                    onLaunchApp = { if (!uiState.isEditMode) viewModel.launchApp(it) },
-                    onTogglePin = { viewModel.toggleAppPin(it) },
-                    onOpenAppDrawer = { if (!uiState.isEditMode) viewModel.openAppDrawer() }
-                )
-            }
+            LauncherHomeCanvas(
+                uiState = uiState,
+                isEditMode = uiState.isEditMode,
+                onToggleClockStyle = {
+                    if (uiState.isEditMode) {
+                        viewModel.setEditCategory(com.example.ui.viewmodel.EditCategory.CLOCK)
+                    } else {
+                        viewModel.toggleClockStyle()
+                    }
+                },
+                onOpenGestureOverview = { if (!uiState.isEditMode) viewModel.openGestureOverview() },
+                onLockScreen = { if (!uiState.isEditMode) lockDeviceAction() },
+                onOpenAmbientLock = { if (!uiState.isEditMode) viewModel.openAmbientLock() },
+                onOpenProgressStats = { if (!uiState.isEditMode) viewModel.openProgress() },
+                onOpenSettings = { if (!uiState.isEditMode) viewModel.openSettings() },
+                onStartFocus = { if (!uiState.isEditMode) viewModel.startFocusMode() },
+                onToggleTask = { viewModel.toggleTaskCompletion(it) },
+                onSetAsMission = { viewModel.setActiveMission(it) },
+                onQuickAddTask = { title ->
+                    viewModel.createTask(
+                        title = title,
+                        estimatedMinutes = 25,
+                        priority = 2,
+                        scheduledDate = System.currentTimeMillis()
+                    )
+                },
+                onOpenCalendarPlanner = { if (!uiState.isEditMode) viewModel.openMissions() },
+                onLaunchApp = { if (!uiState.isEditMode) viewModel.launchApp(it) },
+                onTogglePin = { viewModel.toggleAppPin(it) },
+                onOpenAppDrawer = { if (!uiState.isEditMode) viewModel.openAppDrawer() }
+            )
         }
 
         // Top Navigation Bar for Live Home Screen Editor
@@ -347,7 +327,7 @@ fun HomeScreen(
             modifier = Modifier.align(Alignment.TopCenter)
         ) {
             LiveEditorTopBar(
-                onClose = { viewModel.closeEditMode() },
+                onAdd = { viewModel.setEditCategory(com.example.ui.viewmodel.EditCategory.WALLPAPER) },
                 onDone = { viewModel.closeEditMode() }
             )
         }
@@ -368,23 +348,19 @@ fun HomeScreen(
             LiveEditorBottomDock(
                 activeCategory = uiState.activeEditCategory,
                 onSelectCategory = { viewModel.setEditCategory(it) },
-                appearanceState = uiState.appearanceState,
+                onDone = { viewModel.closeEditMode() },
+                uiState = uiState,
                 onUpdateAppearance = { viewModel.updateAppearance(it) },
-                selectedWallpaper = uiState.selectedWallpaper,
-                wallpaperDim = uiState.wallpaperDim,
+                onSelectWallpaperTarget = { viewModel.setWallpaperTarget(it) },
                 onUpdateWallpaperDim = { viewModel.setWallpaperDim(it) },
-                clockStyle = uiState.selectedClockStyle,
                 onSelectClockStyle = { viewModel.setClockStyle(it) },
-                appIconSize = uiState.appIconSize,
                 onSelectIconSize = { viewModel.setAppIconSize(it) },
-                hideAppLabels = uiState.hideAppLabels,
                 onToggleHideAppLabels = { viewModel.setHideAppLabels(it) },
-                hideDockLabels = uiState.hideDockLabels,
                 onToggleHideDockLabels = { viewModel.setHideDockLabels(it) },
-                drawerGridColumns = uiState.drawerGridColumns,
                 onSelectGridColumns = { viewModel.setDrawerGridColumns(it) },
                 onSelectWallpaper = { viewModel.setWallpaper(it) },
-                onSetCustomWallpaper = { viewModel.setCustomWallpaperFromUri(android.net.Uri.parse(it)) }
+                onSetCustomWallpaper = { viewModel.setCustomWallpaperFromUri(android.net.Uri.parse(it)) },
+                onResetAppearance = { viewModel.resetAppearanceToDefaults() }
             )
         }
 
@@ -683,7 +659,7 @@ private fun LockPermissionDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(26.dp))
-                .background(Color(0xFF141419))
+                .background(Color(0xF5101218))
                 .border(1.dp, GlassBorderBrush, RoundedCornerShape(26.dp))
                 .padding(24.dp)
         ) {
@@ -696,14 +672,14 @@ private fun LockPermissionDialog(
                     modifier = Modifier
                         .size(54.dp)
                         .clip(RoundedCornerShape(27.dp))
-                        .background(Color(0x33FF2A4D))
-                        .border(1.dp, Color(0x66FF2A4D), RoundedCornerShape(27.dp)),
+                        .background(com.example.ui.theme.LocalAtlasAccent.current.copy(alpha = 0.16f))
+                        .border(1.dp, com.example.ui.theme.LocalAtlasAccent.current.copy(alpha = 0.5f), RoundedCornerShape(27.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.Lock,
                         contentDescription = null,
-                        tint = CrimsonElectric,
+                        tint = com.example.ui.theme.LocalAtlasAccent.current,
                         modifier = Modifier.size(24.dp)
                     )
                 }

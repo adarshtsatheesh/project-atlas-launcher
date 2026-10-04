@@ -156,13 +156,15 @@ object ThemeManager {
 
     /**
      * Builds hairline subtle liquid glass reflection border brush (Apple visionOS inspired).
+     * The gradient is tinted with the active accent so every glass border in the launcher
+     * recolors instantly when the theme color changes.
      */
     fun getBorderBrush(accentColor: Color): Brush {
         return Brush.linearGradient(
             colors = listOf(
-                Color(0x30FFFFFF),
-                Color(0x10FFFFFF),
-                Color(0x20FFFFFF)
+                accentColor.copy(alpha = 0.42f),
+                Color(0x14FFFFFF),
+                accentColor.copy(alpha = 0.30f)
             ),
             start = Offset(0f, 0f),
             end = Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)

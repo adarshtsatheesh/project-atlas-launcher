@@ -488,6 +488,8 @@ private fun AppGridCell(
 ) {
     val boxSize = (iconSize.dpSize + 6).dp
     val iconDp = iconSize.dpSize.dp
+    val labelFontSize = com.example.ui.appearance.LocalAppearanceState.current
+        .iconLabelSize.spSize.sp
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -594,7 +596,7 @@ private fun AppGridCell(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center,
-                fontSize = 11.sp
+                fontSize = labelFontSize
             )
         }
     }

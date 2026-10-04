@@ -9,6 +9,7 @@ import com.example.domain.model.BuiltInWallpaper
 import com.example.domain.model.ColorPalette
 import com.example.ui.appearance.AppearanceState
 import com.example.util.DateUtils
+import com.example.util.WallpaperTarget
 import com.example.util.WeatherSnapshot
 
 enum class ClockStyle(val label: String) {
@@ -43,16 +44,16 @@ enum class IdentityTitle(val label: String, val subtitle: String) {
 
 enum class EditCategory(val label: String) {
     WALLPAPER("Wallpaper"),
-    APPEARANCE("Appearance"),
-    TYPOGRAPHY("Typography"),
+    APPEARANCE("Theme"),
     ICONS("Icons"),
     CLOCK("Clock"),
-    WIDGETS("Widgets");
+    LAYOUT("Layout"),
+    TYPOGRAPHY("Font"),
+    MORE("More");
 
     companion object {
         val THEME get() = APPEARANCE
         val FONT get() = TYPOGRAPHY
-        val LAYOUT get() = WIDGETS
     }
 }
 
@@ -113,6 +114,11 @@ data class LauncherUiState(
     val selectedWallpaper: BuiltInWallpaper = BuiltInWallpaper.OBSIDIAN_VOID,
     val customWallpaperPath: String? = null,
     val wallpaperDim: Float = 0.35f,
+    // Which system surfaces the wallpaper is applied to (home / lock / both)
+    val wallpaperTarget: WallpaperTarget = WallpaperTarget.BOTH,
+    // Dedicated lock screen wallpaper; null = "same as home"
+    val lockWallpaper: BuiltInWallpaper? = null,
+    val lockCustomWallpaperPath: String? = null,
     // Live local weather for the clock header (null until first fetch)
     val weather: WeatherSnapshot? = null,
     // Evolution & Identity System

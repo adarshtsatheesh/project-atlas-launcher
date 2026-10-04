@@ -90,7 +90,6 @@ fun TodayMissionTaskConsole(
     onQuickAddTask: (String) -> Unit,
     onOpenCalendarPlanner: () -> Unit,
     isEditMode: Boolean = false,
-    onEditWidget: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showQuickAdd by remember { mutableStateOf(false) }
@@ -107,22 +106,29 @@ fun TodayMissionTaskConsole(
         label = "widget_scale"
     )
 
-    val infiniteTransition = rememberInfiniteTransition(label = "widget_wobble")
-    val wobbleOffsetY by infiniteTransition.animateFloat(
-        initialValue = if (isEditMode) -1.2f else 0f,
-        targetValue = if (isEditMode) 1.2f else 0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1400, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "wobble_y"
-    )
+    // Wobble only while the home screen is in edit mode — avoids a permanent
+    // 1.4s invalidation loop on the widget during normal use.
+    val wobbleOffsetY: Float
+    if (isEditMode) {
+        val infiniteTransition = rememberInfiniteTransition(label = "widget_wobble")
+        wobbleOffsetY = infiniteTransition.animateFloat(
+            initialValue = -1.2f,
+            targetValue = 1.2f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1400, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "wobble_y"
+        ).value
+    } else {
+        wobbleOffsetY = 0f
+    }
 
     val accent = com.example.ui.theme.LocalAtlasAccent.current
 
     // Real widget styling driven by the Appearance Studio (Layout category)
     val appearance = com.example.ui.appearance.LocalAppearanceState.current
-    val widgetShape = RoundedCornerShape(26.dp)
+    val widgetShape = RoundedCornerShape(appearance.widgetCornerRadiusDp.coerceIn(8, 40).dp)
     val widgetFillAlpha = ((100 - appearance.widgetTransparency).coerceIn(15, 100)) / 100f
     val widgetFillBrush: Brush = when (appearance.widgetStyle) {
         com.example.ui.appearance.WidgetStyle.MINIMAL ->
@@ -176,7 +182,15 @@ fun TodayMissionTaskConsole(
             .fillMaxWidth()
             .padding(horizontal = 24.dp)
             .clip(widgetShape)
-            .background(widgetFillBrush, widgetShape)
+            .background(
+                if (isEditMode) {
+                    // ColorOS edit mode: widget floats in its own frosted card
+                    Brush.verticalGradient(
+                        listOf(Color(0x2EFFFFFF), Color(0x14FFFFFF))
+                    )
+                } else widgetFillBrush,
+                widgetShape
+            )
             .border(widgetBorderWidth, widgetBorderBrush, widgetShape)
             .pointerInput(Unit) {
                 detectTapGestures(
@@ -189,40 +203,6 @@ fun TodayMissionTaskConsole(
             .testTag("today_mission_task_console")
     ) {
         Column {
-            if (isEditMode) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(accent.copy(alpha = 0.2f))
-                            .border(1.dp, accent.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
-                            .clickable { onEditWidget() }
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Outlined.Dashboard,
-                            contentDescription = "Edit Widget",
-                            tint = Color.White,
-                            modifier = Modifier.size(12.dp)
-                        )
-                        Text(
-                            text = "Widget",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 10.sp
-                            ),
-                            color = Color.White
-                        )
-                    }
-                }
-            }
             // Header Row: TODAY'S FOCUS, task count, Calendar button & Quick Add
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -401,7 +381,7 @@ fun TodayMissionTaskConsole(
                         .border(
                             1.dp,
                             Brush.verticalGradient(
-                                listOf(Color(0x99FFFFFF), Color(0x33FF2A4D))
+                                listOf(Color(0x99FFFFFF), accent.copy(alpha = 0.2f))
                             ),
                             RoundedCornerShape(14.dp)
                         )

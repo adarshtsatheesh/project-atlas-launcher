@@ -104,26 +104,35 @@ fun QuickDock(
         label = "dock_scale"
     )
 
-    // iOS iconic gentle icon wiggle & float in edit mode
-    val infiniteTransition = rememberInfiniteTransition(label = "dock_icon_wiggle")
-    val wiggleAngle by infiniteTransition.animateFloat(
-        initialValue = -2.2f,
-        targetValue = 2.2f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(150, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "icon_wiggle"
-    )
-    val floatAnim by infiniteTransition.animateFloat(
-        initialValue = -1.2f,
-        targetValue = 1.2f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(170, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "icon_float"
-    )
+    // iOS iconic gentle icon wiggle & float — ONLY while in edit mode.
+    // Gate the infinite transitions behind isEditMode so the dock stops
+    // invalidating/recomposing 6-8 times per second on the home screen.
+    val wiggleAngle: Float
+    val floatAnim: Float
+    if (isEditMode) {
+        val infiniteTransition = rememberInfiniteTransition(label = "dock_icon_wiggle")
+        wiggleAngle = infiniteTransition.animateFloat(
+            initialValue = -2.2f,
+            targetValue = 2.2f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(150, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "icon_wiggle"
+        ).value
+        floatAnim = infiniteTransition.animateFloat(
+            initialValue = -1.2f,
+            targetValue = 1.2f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(170, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "icon_float"
+        ).value
+    } else {
+        wiggleAngle = 0f
+        floatAnim = 0f
+    }
 
     Column(
         modifier = modifier
@@ -162,11 +171,12 @@ fun QuickDock(
                     DockItem(
                         app = app,
                         iconSize = iconSize,
-                        hideLabel = hideLabels && !appearance.iconShowLabels,
+                        // Hide when EITHER the dock-label toggle is off OR the
+                        // global label switch is off (&& made the dock toggle a no-op).
+                        hideLabel = hideLabels || !appearance.iconShowLabels,
                         floatOffsetY = itemFloat,
                         wiggleRotationZ = itemAngle,
                         cornerRadiusPercent = appearance.iconCornerRadiusPercent,
-                        customSizeDp = appearance.iconSizeDp,
                         onClick = { onLaunchApp(app) },
                         onLongClick = { onTogglePin(app) }
                     )
@@ -205,11 +215,12 @@ private fun DockItem(
     floatOffsetY: Float = 0f,
     wiggleRotationZ: Float = 0f,
     cornerRadiusPercent: Int = 24,
-    customSizeDp: Int = 52,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
-    val effectiveDp = customSizeDp.dp
+    // The dock MUST follow the editor's icon-size setting so the preview is
+    // WYSIWYG with the home screen (drawer already uses iconSize.dpSize).
+    val effectiveDp = iconSize.dpSize.dp
     val boxSize = effectiveDp + 6.dp
     val iconDp = effectiveDp
     val shapeRadius = (cornerRadiusPercent * 0.26f).dp.coerceAtLeast(4.dp)

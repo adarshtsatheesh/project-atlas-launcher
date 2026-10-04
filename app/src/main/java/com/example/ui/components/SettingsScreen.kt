@@ -507,7 +507,7 @@ fun SettingsScreen(
                         Text("Cancel", color = TextSecondary)
                     }
                 },
-                containerColor = AtlasBackground,
+                containerColor = Color(0xF5101218),
                 shape = RoundedCornerShape(20.dp)
             )
         }
@@ -588,7 +588,7 @@ fun SettingsScreen(
                         Text("Done", color = CrimsonElectric)
                     }
                 },
-                containerColor = AtlasBackground,
+                containerColor = Color(0xF5101218),
                 shape = RoundedCornerShape(20.dp)
             )
         }

@@ -8,6 +8,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -459,7 +460,7 @@ fun FocusModeOverlay(
     if (showExitDialog && exitFrictionEnabled) {
         AlertDialog(
             onDismissRequest = { showExitDialog = false },
-            containerColor = AtlasCardElevated,
+            containerColor = Color(0xF5101218),
             title = {
                 Text(
                     text = "Pause & Reflect",
@@ -478,8 +479,8 @@ fun FocusModeOverlay(
                 Button(
                     onClick = { showExitDialog = false },
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = SoftSageGreen,
-                        contentColor = AtlasBackground
+                        containerColor = com.example.ui.theme.LocalAtlasAccent.current,
+                        contentColor = Color.White
                     )
                 ) {
                     Text("Stay Focused")

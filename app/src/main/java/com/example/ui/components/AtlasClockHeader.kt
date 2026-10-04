@@ -160,6 +160,7 @@ fun AtlasClockHeader(
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Weather / Location pill with glassmorphic finish
+            if (appearance.clockShowWeather) {
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(16.dp))
@@ -183,6 +184,7 @@ fun AtlasClockHeader(
                     fontSize = 11.sp,
                     maxLines = 1
                 )
+            }
             }
 
             // Top action icons

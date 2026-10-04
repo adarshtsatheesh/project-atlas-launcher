@@ -18,6 +18,7 @@ import com.example.domain.model.BuiltInWallpaper
 import com.example.domain.model.ColorPalette
 import com.example.ui.appearance.*
 import com.example.util.AtlasWallpaperSynchronizer
+import com.example.util.WallpaperTarget
 import com.example.util.ProfilePhotoProcessor
 import com.example.util.GeminiClient
 import com.example.util.WeatherService
@@ -66,6 +67,9 @@ class LauncherViewModel(
             selectedWallpaper = loadSavedWallpaper(),
             customWallpaperPath = loadSavedCustomWallpaperPath(),
             wallpaperDim = loadSavedWallpaperDim(),
+            wallpaperTarget = loadSavedWallpaperTarget(),
+            lockWallpaper = loadSavedLockWallpaper(),
+            lockCustomWallpaperPath = prefs?.getString("lock_custom_wallpaper_path", null),
             customAvatarPath = loadSavedCustomAvatarPath(),
             identityTitle = loadSavedIdentityTitle(),
             identityVocation = loadSavedIdentityVocation(),
@@ -159,6 +163,24 @@ class LauncherViewModel(
 
     private fun loadSavedWallpaperDim(): Float {
         return prefs?.getFloat("wallpaper_dim", 0.35f) ?: 0.35f
+    }
+
+    private fun loadSavedWallpaperTarget(): WallpaperTarget {
+        val saved = prefs?.getString("wallpaper_target", null) ?: return WallpaperTarget.BOTH
+        return try {
+            WallpaperTarget.valueOf(saved)
+        } catch (e: Exception) {
+            WallpaperTarget.BOTH
+        }
+    }
+
+    private fun loadSavedLockWallpaper(): BuiltInWallpaper? {
+        val saved = prefs?.getString("lock_wallpaper_theme", null) ?: return null
+        return try {
+            BuiltInWallpaper.valueOf(saved)
+        } catch (e: Exception) {
+            null
+        }
     }
 
     private fun loadSavedCustomAvatarPath(): String? {
@@ -363,6 +385,9 @@ class LauncherViewModel(
         val widgetStyleStr = p.getString("appearance_widget_style", WidgetStyle.GLASS.name)
         val widgetStyle = try { WidgetStyle.valueOf(widgetStyleStr ?: "") } catch (e: Exception) { WidgetStyle.GLASS }
 
+        val widgetCorner = p.getInt("appearance_widget_corner_radius", 22)
+        val clockShowWeather = p.getInt("appearance_clock_show_weather", 1) == 1
+
         val statusStr = p.getString("appearance_status_bar", StatusBarMode.DEFAULT.name)
         val statusBarMode = try { StatusBarMode.valueOf(statusStr ?: "") } catch (e: Exception) { StatusBarMode.DEFAULT }
 
@@ -401,6 +426,8 @@ class LauncherViewModel(
             wallpaperStyle = wallpaperStyle,
             clockStylePreset = clockStylePreset,
             widgetStyle = widgetStyle,
+            widgetCornerRadiusDp = widgetCorner,
+            clockShowWeather = clockShowWeather,
             statusBarMode = statusBarMode,
             notesPaperStyle = notesPaperStyle,
             xpSystemStyle = xpSystemStyle
@@ -431,6 +458,8 @@ class LauncherViewModel(
             ?.putString("appearance_wallpaper_style", state.wallpaperStyle.name)
             ?.putString("clock_style_preset", state.clockStylePreset.name)
             ?.putString("appearance_widget_style", state.widgetStyle.name)
+            ?.putInt("appearance_widget_corner_radius", state.widgetCornerRadiusDp)
+            ?.putInt("appearance_clock_show_weather", if (state.clockShowWeather) 1 else 0)
             ?.putString("appearance_status_bar", state.statusBarMode.name)
             ?.putString("appearance_notes_paper", state.notesPaperStyle.name)
             ?.putString("appearance_xp_style", state.xpSystemStyle.name)
@@ -506,10 +535,14 @@ class LauncherViewModel(
         // Seamless System Recents & Wallpaper Synchronization
         viewModelScope.launch {
             val ctx = context ?: return@launch
+            val s = _uiState.value
             AtlasWallpaperSynchronizer.syncWallpaper(
                 context = ctx,
-                wallpaper = _uiState.value.selectedWallpaper,
-                customImagePath = _uiState.value.customWallpaperPath
+                wallpaper = s.selectedWallpaper,
+                customImagePath = s.customWallpaperPath,
+                target = s.wallpaperTarget,
+                lockWallpaper = s.lockWallpaper,
+                lockCustomImagePath = s.lockCustomWallpaperPath
             )
         }
 
@@ -727,7 +760,10 @@ class LauncherViewModel(
                 isEditMode = true,
                 isSettingsOpen = false,
                 isAppearanceStudioOpen = false,
-                activeEditCategory = category ?: EditCategory.WALLPAPER
+                // Long-press on the home screen opens the editor MENU (circle
+                // dock). Only explicit entries (top-bar "+", appearance studio)
+                // pass a category.
+                activeEditCategory = category
             )
         }
     }
@@ -752,6 +788,31 @@ class LauncherViewModel(
         val updated = transform(current)
         _uiState.update { it.copy(appearanceState = updated) }
         saveAppearanceState(updated)
+    }
+
+    /** Restores every style control to the factory default look. */
+    fun resetAppearanceToDefaults() {
+        val defaults = AppearanceState()
+        _uiState.update {
+            it.copy(
+                appearanceState = defaults,
+                wallpaperDim = 0.35f,
+                selectedWallpaper = BuiltInWallpaper.OBSIDIAN_VOID,
+                wallpaperTarget = WallpaperTarget.BOTH,
+                customWallpaperPath = null,
+                lockWallpaper = null,
+                lockCustomWallpaperPath = null
+            )
+        }
+        saveAppearanceState(defaults)
+        prefs?.edit()
+            ?.putString("wallpaper_theme", BuiltInWallpaper.OBSIDIAN_VOID.name)
+            ?.putFloat("wallpaper_dim", 0.35f)
+            ?.putString("wallpaper_target", WallpaperTarget.BOTH.name)
+            ?.putString("lock_wallpaper_theme", null)
+            ?.putString("lock_custom_wallpaper_path", null)
+            ?.apply()
+        syncWallpaperToSystem(force = true)
     }
 
     fun setFontFamily(font: AppFontFamily) {
@@ -957,6 +1018,14 @@ class LauncherViewModel(
     fun setColorPalette(palette: ColorPalette) {
         _uiState.update { it.copy(selectedColorPalette = palette) }
         prefs?.edit()?.putString("color_palette", palette.name)?.apply()
+        // Single source of truth: choosing a color palette also retints the global
+        // accent so Settings, Dock, Search, Sheets, Switches… all recolor together.
+        updateAppearance {
+            it.copy(
+                customAccentHex = palette.hexCode,
+                accentPreset = AccentColorPreset.CUSTOM
+            )
+        }
     }
 
     fun setAppIconSize(size: AppIconSize) {
@@ -1014,7 +1083,12 @@ class LauncherViewModel(
         _uiState.update {
             it.copy(
                 selectedWallpaper = wallpaper,
-                selectedColorPalette = matchingPalette
+                selectedColorPalette = matchingPalette,
+                // "Same wallpaper for both" is the default mental model: picking a new
+                // wallpaper keeps the lock screen in sync unless the user explicitly
+                // set a different lock wallpaper in the editor.
+                lockWallpaper = if (it.wallpaperTarget == WallpaperTarget.HOME) it.lockWallpaper else null,
+                lockCustomWallpaperPath = if (it.wallpaperTarget == WallpaperTarget.HOME) it.lockCustomWallpaperPath else null
             )
         }
         prefs?.edit()
@@ -1022,13 +1096,47 @@ class LauncherViewModel(
             ?.putString("color_palette", matchingPalette.name)
             ?.apply()
 
-        // Sync with Android System Wallpaper & Recents
+        syncWallpaperToSystem()
+    }
+
+    /** Updates which system surfaces the active wallpaper is applied to. */
+    fun setWallpaperTarget(target: WallpaperTarget) {
+        _uiState.update { it.copy(wallpaperTarget = target) }
+        prefs?.edit()?.putString("wallpaper_target", target.name)?.apply()
+        syncWallpaperToSystem(force = true)
+    }
+
+    /**
+     * Sets a dedicated lock screen wallpaper. Passing null reverts the lock screen
+     * to mirroring the home wallpaper ("Same wallpaper").
+     */
+    fun setLockWallpaper(wallpaper: BuiltInWallpaper?, customPath: String? = null) {
+        _uiState.update {
+            it.copy(
+                lockWallpaper = wallpaper,
+                lockCustomWallpaperPath = if (wallpaper == BuiltInWallpaper.CUSTOM_GALLERY) customPath else null
+            )
+        }
+        prefs?.edit()
+            ?.putString("lock_wallpaper_theme", wallpaper?.name)
+            ?.putString("lock_custom_wallpaper_path", if (wallpaper == BuiltInWallpaper.CUSTOM_GALLERY) customPath else null)
+            ?.apply()
+        syncWallpaperToSystem(force = true)
+    }
+
+    /** Single source of truth for pushing the current wallpaper state to Android. */
+    private fun syncWallpaperToSystem(force: Boolean = false) {
         viewModelScope.launch {
             val ctx = context ?: return@launch
+            val state = _uiState.value
             AtlasWallpaperSynchronizer.syncWallpaper(
                 context = ctx,
-                wallpaper = wallpaper,
-                customImagePath = null
+                wallpaper = state.selectedWallpaper,
+                customImagePath = state.customWallpaperPath,
+                force = force,
+                target = state.wallpaperTarget,
+                lockWallpaper = state.lockWallpaper,
+                lockCustomImagePath = state.lockCustomWallpaperPath
             )
         }
     }
@@ -1055,27 +1163,33 @@ class LauncherViewModel(
                     inputStream.copyTo(outputStream)
                 }
                 val path = wallpaperFile.absolutePath
-                prefs?.edit()
-                    ?.putString("custom_wallpaper_path", path)
-                    ?.putString("wallpaper_theme", BuiltInWallpaper.CUSTOM_GALLERY.name)
-                    ?.apply()
-
-                _uiState.update {
-                    it.copy(
-                        selectedWallpaper = BuiltInWallpaper.CUSTOM_GALLERY,
-                        customWallpaperPath = path
-                    )
+                if (_uiState.value.wallpaperTarget == WallpaperTarget.LOCK) {
+                    // Applying a custom photo to the lock screen only
+                    prefs?.edit()
+                        ?.putString("lock_wallpaper_theme", BuiltInWallpaper.CUSTOM_GALLERY.name)
+                        ?.putString("lock_custom_wallpaper_path", path)
+                        ?.apply()
+                    _uiState.update {
+                        it.copy(
+                            lockWallpaper = BuiltInWallpaper.CUSTOM_GALLERY,
+                            lockCustomWallpaperPath = path
+                        )
+                    }
+                } else {
+                    prefs?.edit()
+                        ?.putString("custom_wallpaper_path", path)
+                        ?.putString("wallpaper_theme", BuiltInWallpaper.CUSTOM_GALLERY.name)
+                        ?.apply()
+                    _uiState.update {
+                        it.copy(
+                            selectedWallpaper = BuiltInWallpaper.CUSTOM_GALLERY,
+                            customWallpaperPath = path
+                        )
+                    }
                 }
 
-                // Sync custom image to Android System Wallpaper
-                launch {
-                    AtlasWallpaperSynchronizer.syncWallpaper(
-                        context = ctx,
-                        wallpaper = BuiltInWallpaper.CUSTOM_GALLERY,
-                        customImagePath = path,
-                        force = true
-                    )
-                }
+                // Sync custom image to Android System Wallpaper (home + lock)
+                syncWallpaperToSystem(force = true)
 
                 launch(Dispatchers.Main) { onComplete(true) }
             } catch (e: Exception) {
@@ -1096,15 +1210,7 @@ class LauncherViewModel(
                 customWallpaperPath = null
             )
         }
-        viewModelScope.launch {
-            val ctx = context ?: return@launch
-            AtlasWallpaperSynchronizer.syncWallpaper(
-                context = ctx,
-                wallpaper = BuiltInWallpaper.OBSIDIAN_VOID,
-                customImagePath = null,
-                force = true
-            )
-        }
+        syncWallpaperToSystem(force = true)
     }
 
     fun createTask(

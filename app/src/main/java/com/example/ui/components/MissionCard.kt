@@ -79,6 +79,7 @@ fun MissionCard(
     onOpenTaskEngine: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val accent = com.example.ui.theme.LocalAtlasAccent.current
     if (mission == null) {
         // Empty State: Prompt user to set an intentional mission with Glassmorphism
         Box(
@@ -389,7 +390,7 @@ fun MissionCard(
                     .border(
                         1.dp,
                         Brush.verticalGradient(
-                            listOf(Color(0x99FFFFFF), Color(0x33FF2A4D))
+                            listOf(Color(0x99FFFFFF), accent.copy(alpha = 0.2f))
                         ),
                         RoundedCornerShape(16.dp)
                     )

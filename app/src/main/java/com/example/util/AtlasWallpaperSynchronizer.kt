@@ -20,11 +20,16 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
+ * Which system surfaces the launcher wallpaper should be applied to.
+ */
+enum class WallpaperTarget { HOME, LOCK, BOTH }
+
+/**
  * High-performance System Wallpaper Synchronizer.
  *
  * Ensures that Android's SystemUI Recents (Overview) screen, Quickstep navigation,
- * and lock screen seamlessly reflect the launcher's active wallpaper, eliminating
- * visual mismatches or abrupt background jumps when entering/exiting Recent Apps.
+ * home screen and lock screen seamlessly reflect the launcher's active wallpaper,
+ * eliminating visual mismatches or abrupt background jumps when entering/exiting Recent Apps.
  */
 object AtlasWallpaperSynchronizer {
 
@@ -34,14 +39,19 @@ object AtlasWallpaperSynchronizer {
     /**
      * Synchronizes the launcher's active wallpaper to Android's [WallpaperManager].
      * Runs asynchronously on [Dispatchers.IO] to avoid any main thread frame drops.
+     *
+     * @param target which wallpaper surface(s) to update (home, lock, or both).
      */
     suspend fun syncWallpaper(
         context: Context,
         wallpaper: BuiltInWallpaper,
         customImagePath: String? = null,
-        force: Boolean = false
+        force: Boolean = false,
+        target: WallpaperTarget = WallpaperTarget.BOTH,
+        lockWallpaper: BuiltInWallpaper? = null,
+        lockCustomImagePath: String? = null
     ) = withContext(Dispatchers.IO) {
-        val syncKey = "${wallpaper.name}_${customImagePath ?: ""}"
+        val syncKey = "${wallpaper.name}_${customImagePath ?: ""}_${target.name}_${lockWallpaper?.name ?: ""}_${lockCustomImagePath ?: ""}"
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val lastSynced = prefs.getString(KEY_LAST_SYNCED, null)
 
@@ -58,20 +68,52 @@ object AtlasWallpaperSynchronizer {
             val width = displayMetrics.widthPixels.coerceAtLeast(1080)
             val height = displayMetrics.heightPixels.coerceAtLeast(1920)
 
-            val bitmap = if (wallpaper == BuiltInWallpaper.CUSTOM_GALLERY && !customImagePath.isNullOrEmpty()) {
-                generateCustomWallpaperBitmap(customImagePath, width, height)
-            } else {
-                generateProceduralWallpaperBitmap(wallpaper, width, height)
-            }
-
-            if (bitmap != null) {
-                try {
-                    wallpaperManager.setBitmap(bitmap)
-                    prefs.edit().putString(KEY_LAST_SYNCED, syncKey).apply()
-                } finally {
-                    bitmap.recycle()
+            // Home / system surface (Recents, Quickstep, home screen)
+            if (target != WallpaperTarget.LOCK) {
+                val bitmap = if (wallpaper == BuiltInWallpaper.CUSTOM_GALLERY && !customImagePath.isNullOrEmpty()) {
+                    generateCustomWallpaperBitmap(customImagePath, width, height)
+                } else {
+                    generateProceduralWallpaperBitmap(wallpaper, width, height)
+                }
+                if (bitmap != null) {
+                    try {
+                        wallpaperManager.setBitmap(
+                            bitmap,
+                            null,
+                            true,
+                            WallpaperManager.FLAG_SYSTEM
+                        )
+                    } finally {
+                        bitmap.recycle()
+                    }
                 }
             }
+
+            // Lock screen surface (falls back to the home wallpaper when no dedicated
+            // lock wallpaper has been chosen → "Same wallpaper" behavior).
+            if (target != WallpaperTarget.HOME) {
+                val lockWp = lockWallpaper ?: wallpaper
+                val lockPath = if (lockWallpaper == null) customImagePath else lockCustomImagePath
+                val lockBitmap = if (lockWp == BuiltInWallpaper.CUSTOM_GALLERY && !lockPath.isNullOrEmpty()) {
+                    generateCustomWallpaperBitmap(lockPath, width, height)
+                } else {
+                    generateProceduralWallpaperBitmap(lockWp, width, height)
+                }
+                if (lockBitmap != null) {
+                    try {
+                        wallpaperManager.setBitmap(
+                            lockBitmap,
+                            null,
+                            true,
+                            WallpaperManager.FLAG_LOCK
+                        )
+                    } finally {
+                        lockBitmap.recycle()
+                    }
+                }
+            }
+
+            prefs.edit().putString(KEY_LAST_SYNCED, syncKey).apply()
         } catch (e: Exception) {
             // Gracefully catch security / I/O exceptions on restricted OEM firmware
         }

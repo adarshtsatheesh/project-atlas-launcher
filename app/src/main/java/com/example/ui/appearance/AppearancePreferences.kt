@@ -620,6 +620,7 @@ data class AppearanceState(
 
     // 9. Legacy Widgets, Navigation, Notes & XP
     val widgetStyle: WidgetStyle = WidgetStyle.GLASS,
+    val widgetCornerRadiusDp: Int = 22,
     val statusBarMode: StatusBarMode = StatusBarMode.DEFAULT,
     val gestureSensitivity: GestureSensitivity = GestureSensitivity.MEDIUM,
     val dockSize: DockSize = DockSize.NORMAL,
