@@ -22,10 +22,22 @@ data class AppItem(
     val userHandle: UserHandle? = null,
     val componentName: ComponentName? = null,
     val isCloned: Boolean = false,
-    val isWorkProfile: Boolean = false
+    val isWorkProfile: Boolean = false,
+    // Launcher-level user edits (see AppCustomizationEntity). Null = system default.
+    val customLabel: String? = null,
+    val iconPresetId: Int? = null,
+    val customIconUri: String? = null
 ) {
     val uniqueKey: String
         get() = if (userHandle != null) "${packageName}#${userHandle.hashCode()}" else packageName
+
+    /** Label the launcher renders: the user's alias when set, the real app name otherwise. */
+    val displayName: String
+        get() = customLabel?.takeIf { it.isNotBlank() } ?: name
+
+    /** True when the user replaced the system icon with a preset or a gallery image. */
+    val hasCustomIcon: Boolean
+        get() = iconPresetId != null || !customIconUri.isNullOrBlank()
 
     companion object {
         fun resolveCategory(name: String, packageName: String): AppCategory {

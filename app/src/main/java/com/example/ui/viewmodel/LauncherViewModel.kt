@@ -77,6 +77,7 @@ class LauncherViewModel(
             userTotalXp = loadSavedTotalXp(),
             claimedTodayXp = hasClaimedToday(),
             momentumDays = computeMomentum(loadSavedActiveDays()).coerceAtLeast(1),
+            activeDayKeys = loadSavedActiveDays(),
             unlockedBadges = loadUnlockedBadges(),
             coachTone = loadSavedCoachTone(),
             defaultFocusPreset = loadSavedDefaultFocusPreset(),
@@ -277,7 +278,7 @@ class LauncherViewModel(
         days.add(dayKey())
         prefs?.edit()?.putString("active_days", days.joinToString(","))?.apply()
         val streak = computeMomentum(days).coerceAtLeast(1)
-        _uiState.update { it.copy(momentumDays = streak) }
+        _uiState.update { it.copy(momentumDays = streak, activeDayKeys = days) }
         if (streak >= 7) unlockBadge("streak_7")
         if (streak >= 30) unlockBadge("streak_30")
     }
@@ -504,10 +505,16 @@ class LauncherViewModel(
             }
         }
 
-        // Collect apps stream
+        // Collect apps stream. The dock list follows the persisted pin order
+        // (never a re-sorted copy of the alphabetical app list) and has no
+        // "random defaults" fallback, so pins stay exactly as the user left them.
         viewModelScope.launch {
-            appLauncherRepository.combinedApps.collect { apps ->
-                val pinned = apps.filter { it.isPinned }
+            combine(
+                appLauncherRepository.combinedApps,
+                appLauncherRepository.pinnedApps
+            ) { apps, pins ->
+                apps to LauncherUiState.orderPinnedApps(apps, pins.map { it.packageName })
+            }.collect { (apps, pinned) ->
                 _uiState.update { current ->
                     val filtered = LauncherUiState.computeFilteredApps(
                         apps,
@@ -516,7 +523,7 @@ class LauncherViewModel(
                     )
                     current.copy(
                         allApps = apps,
-                        pinnedApps = if (pinned.isNotEmpty()) pinned else apps.take(4),
+                        pinnedApps = pinned,
                         filteredApps = filtered
                     )
                 }
@@ -707,9 +714,43 @@ class LauncherViewModel(
         }
     }
 
-    fun toggleAppPin(app: AppItem) {
+    /**
+     * Dock management. Pin/move/remove are all explicit, ordered writes into the
+     * persisted pinned table — the dock only changes when the user changes it.
+     */
+    fun pinAppToDock(app: AppItem, index: Int? = null) {
         viewModelScope.launch {
-            appLauncherRepository.togglePin(app)
+            appLauncherRepository.pinAppAt(app, index)
+        }
+    }
+
+    fun moveDockApp(fromIndex: Int, toIndex: Int) {
+        viewModelScope.launch {
+            appLauncherRepository.movePin(fromIndex, toIndex)
+        }
+    }
+
+    fun removeDockApp(app: AppItem) {
+        viewModelScope.launch {
+            appLauncherRepository.removePin(app)
+        }
+    }
+
+    // App drawer context-menu actions
+    fun saveAppCustomization(
+        app: AppItem,
+        customLabel: String?,
+        iconPresetId: Int?,
+        customIconUri: String?
+    ) {
+        viewModelScope.launch {
+            appLauncherRepository.saveAppCustomization(app, customLabel, iconPresetId, customIconUri)
+        }
+    }
+
+    fun resetAppCustomization(app: AppItem) {
+        viewModelScope.launch {
+            appLauncherRepository.resetAppCustomization(app)
         }
     }
 

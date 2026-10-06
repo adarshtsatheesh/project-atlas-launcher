@@ -100,6 +100,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import com.example.ui.viewmodel.DayActivity
 import com.example.data.local.entity.TaskEntity
 import com.example.domain.model.ColorPalette
 import com.example.ui.theme.LevelThemeColors
@@ -158,6 +165,11 @@ fun JourneyScreen(
     momentumDays: Int = 1,
     unlockedBadges: Set<String> = emptySet(),
     colorPalette: ColorPalette? = null,
+    /** Today's real quests, shown as the Daily Quest checklist. */
+    todayTasks: List<TaskEntity> = emptyList(),
+    /** Last 7 days of real activity for the momentum strip (oldest first). */
+    weekActivity: List<DayActivity> = emptyList(),
+    onToggleTask: (TaskEntity) -> Unit = {},
     onClaimXp: (Int) -> Unit = {},
     onUpdateIdentityTitle: (IdentityTitle) -> Unit = {},
     onUpdateProfileName: (String) -> Unit = {},
@@ -347,8 +359,73 @@ fun JourneyScreen(
                 .verticalScroll(scrollState)
                 .padding(horizontal = 22.dp, vertical = 14.dp)
         ) {
+            // ------------------------------------------------------------------
+            // Live System state: quest progress, reset countdown, directive voice
+            // ------------------------------------------------------------------
+            // Fixed success green: reads as "cleared" against every palette, unlike
+            // the global accent alias which follows the app theme colour.
+            val sageGreen = Color(0xFF3DDC97)
+            val penaltyRed = Color(0xFFFF4D6D)
+            val rewardXp = 140
+
+            val questTotal = todayTasks.size
+            val questDone = todayTasks.count { it.isCompleted }
+            val questCleared = questTotal > 0 && questDone >= questTotal
+            val activeDaysThisWeek = weekActivity.count { it.active }
+            val nextGearTier = remember(level) { evolutionTiers.firstOrNull { it.levelReq > level } }
+
+            var titleMenuOpen by remember { mutableStateOf(false) }
+
+            val animatedQuestProgress by animateFloatAsState(
+                targetValue = if (questTotal == 0) 0f else questDone.toFloat() / questTotal.toFloat(),
+                animationSpec = spring(stiffness = 220f, dampingRatio = 0.9f),
+                label = "quest_progress_anim"
+            )
+
+            // Seconds until the System closes the day (local midnight).
+            var resetSeconds by remember { mutableIntStateOf(secondsUntilMidnight()) }
+            LaunchedEffect(Unit) {
+                while (true) {
+                    resetSeconds = secondsUntilMidnight()
+                    delay(1000)
+                }
+            }
+            val countdownText = "%02d:%02d:%02d".format(
+                resetSeconds / 3600,
+                (resetSeconds % 3600) / 60,
+                resetSeconds % 60
+            )
+
+            val streakVerdict = when {
+                weekActivity.isEmpty() -> "NO DATA"
+                activeDaysThisWeek >= weekActivity.size -> "UNBROKEN"
+                activeDaysThisWeek * 2 >= weekActivity.size -> "ON TRACK"
+                activeDaysThisWeek >= 1 -> "AT RISK"
+                else -> "STALLED"
+            }
+
+            val directiveText = when {
+                questCleared ->
+                    "Daily quest cleared. The system logged today as earned — " +
+                            "this is what a stronger version of you looks like."
+                questTotal > 0 && resetSeconds < 3 * 3600 ->
+                    "Time critical. ${questTotal - questDone} quest" +
+                            (if (questTotal - questDone == 1) "" else "s") +
+                            " still open and the reset closes in $countdownText. " +
+                            "Execute now or forfeit the chain."
+                questTotal > 0 ->
+                    "${questTotal - questDone} quests stand between you and today's " +
+                            "reward. Clear the first one — momentum does the rest."
+                totalFocusMinutes == 0 ->
+                    "Focus protocol vacant. One 25-minute block is all it takes " +
+                            "to register today as executed."
+                else ->
+                    "The system does not negotiate and it does not flatter. " +
+                            "It only records what you actually did."
+            }
+
             // =========================================================================
-            // 1. TOP HEADER: IDENTITY EVOLUTION & USER TITLE
+            // 1. SYSTEM STATUS BAR — live clock, "system online", reset countdown
             // =========================================================================
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -358,169 +435,269 @@ fun JourneyScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
-                            .size(7.dp)
+                            .size(8.dp)
                             .clip(CircleShape)
-                            .background(themeColors.primary)
+                            .background(themeColors.primary.copy(alpha = pulseGlow))
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "IDENTITY EVOLUTION",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            letterSpacing = 1.8.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace
-                        ),
-                        color = themeColors.secondary
-                    )
-                }
-
-                // Return Home
-                Row(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(themeColors.cardBackground)
-                        .border(1.dp, themeColors.cardBorder, RoundedCornerShape(20.dp))
-                        .clickable { onClose() }
-                        .padding(horizontal = 14.dp, vertical = 6.dp)
-                        .testTag("journey_close_button"),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "Home",
-                        style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp),
-                        color = TextSecondary
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                        contentDescription = "Return Home",
-                        tint = TextSecondary,
-                        modifier = Modifier.size(13.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // =========================================================================
-            // 2. IDENTITY HEADER: User Name, Title, and Large Profile Photo
-            // =========================================================================
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // User Name
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .clickable { showNameEditDialog = true }
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = profileName,
-                        style = MaterialTheme.typography.headlineMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 30.sp,
-                            letterSpacing = (-0.5).sp
-                        ),
-                        color = TextPureWhite
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Icon(
-                        imageVector = Icons.Default.Edit,
-                        contentDescription = "Edit Name",
-                        tint = TextMuted,
-                        modifier = Modifier.size(16.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                // Identity Title
-                Text(
-                    text = "${identityTitle.label} • $identityVocation",
-                    style = MaterialTheme.typography.titleSmall.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp
-                    ),
-                    color = themeColors.secondary
-                )
-
-                Spacer(modifier = Modifier.height(26.dp))
-
-                // Large Profile Photo (140dp)
-                IdentityProfilePhoto(
-                    photoPath = customAvatarPath,
-                    onPickImageUri = onUploadCustomAvatar,
-                    onCaptureBitmap = { onCaptureCustomAvatarBitmap?.invoke(it) },
-                    onRemovePhoto = onClearCustomAvatar,
-                    size = 140.dp,
-                    renderType = AvatarRenderType.PROFILE_PHOTO
-                )
-            }
-
-            Spacer(modifier = Modifier.height(28.dp))
-
-            // =========================================================================
-            // 3. LEVEL & FORM EVOLUTION CARD
-            // =========================================================================
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(themeColors.cardBackground)
-                    .border(1.dp, themeColors.cardBorder, RoundedCornerShape(22.dp))
-                    .padding(20.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                    Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text(
-                            text = "LEVEL $level",
-                            style = MaterialTheme.typography.headlineSmall.copy(
-                                fontWeight = FontWeight.ExtraBold,
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 22.sp,
-                                letterSpacing = 1.sp
-                            ),
-                            color = TextPureWhite
-                        )
-                        Text(
-                            text = "\"${identityTitle.label}\"",
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontWeight = FontWeight.Medium,
-                                fontSize = 13.5.sp
-                            ),
-                            color = themeColors.primary
-                        )
-                    }
-
-                    // XP Progress Indicator
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            text = "$animatedXp / $currentLevelMaxXp XP",
-                            style = MaterialTheme.typography.labelMedium.copy(
+                            text = "THE SYSTEM",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 11.sp,
+                                letterSpacing = 2.4.sp,
                                 fontWeight = FontWeight.Bold,
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 13.sp
+                                fontFamily = FontFamily.Monospace
                             ),
                             color = TextPureWhite
                         )
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = if (xpToNextLevel > 0) "$xpToNextLevel XP until next level" else "Level Progress Maxed",
-                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            text = "ONLINE · DAY $momentumDays",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 9.sp,
+                                letterSpacing = 1.6.sp,
+                                fontFamily = FontFamily.Monospace
+                            ),
                             color = TextMuted
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = "RESETS IN",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 8.5.sp,
+                                letterSpacing = 1.6.sp,
+                                fontFamily = FontFamily.Monospace
+                            ),
+                            color = TextMuted
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = countdownText,
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            ),
+                            color = themeColors.primary
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    IconButton(
+                        onClick = onClose,
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.06f))
+                            .border(1.dp, Color.White.copy(alpha = 0.12f), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Close,
+                            contentDescription = "Return Home",
+                            tint = TextPureWhite,
+                            modifier = Modifier.size(17.dp)
+                        )
+                    }
+                }
+            }
 
-                // Animated glowing XP bar
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // =========================================================================
+            // 2. HUNTER CARD — identity, level, XP and today's raw numbers
+            // =========================================================================
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .glassPanel(themeColors, 28.dp)
+                    .padding(18.dp)
+            ) {
+                // Fixed heights keep every block tight: the avatar and the oversized
+                // level numerals both reserve more vertical space than they draw.
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(74.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IdentityProfilePhoto(
+                        photoPath = customAvatarPath,
+                        onPickImageUri = onUploadCustomAvatar,
+                        onCaptureBitmap = onCaptureCustomAvatarBitmap ?: {},
+                        onRemovePhoto = onClearCustomAvatar,
+                        size = 70.dp
+                    )
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = profileName,
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontSize = 21.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = 0.2.sp
+                                ),
+                                color = TextPureWhite,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .clickable { showNameEditDialog = true },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Edit,
+                                    contentDescription = "Edit Name",
+                                    tint = themeColors.primary,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        Box {
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .background(themeColors.primary.copy(alpha = 0.14f))
+                                    .border(
+                                        1.dp,
+                                        themeColors.primary.copy(alpha = 0.34f),
+                                        RoundedCornerShape(50)
+                                    )
+                                    .clickable { titleMenuOpen = true }
+                                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = identityTitle.label.uppercase(),
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        fontSize = 9.5.sp,
+                                        letterSpacing = 1.4.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = FontFamily.Monospace
+                                    ),
+                                    color = themeColors.primary
+                                )
+                                Spacer(modifier = Modifier.width(5.dp))
+                                Icon(
+                                    imageVector = Icons.Filled.Tune,
+                                    contentDescription = null,
+                                    tint = themeColors.primary,
+                                    modifier = Modifier.size(11.dp)
+                                )
+                            }
+
+                            DropdownMenu(
+                                expanded = titleMenuOpen,
+                                onDismissRequest = { titleMenuOpen = false }
+                            ) {
+                                IdentityTitle.entries.forEach { option ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                text = option.label,
+                                                color = if (option == identityTitle) themeColors.primary else TextPureWhite,
+                                                fontSize = 13.sp,
+                                                fontWeight = if (option == identityTitle) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                        },
+                                        onClick = {
+                                            titleMenuOpen = false
+                                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                            onUpdateIdentityTitle(option)
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(42.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(
+                            text = "LV",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                letterSpacing = 2.sp,
+                                fontFamily = FontFamily.Monospace
+                            ),
+                            color = TextMuted,
+                            modifier = Modifier.padding(bottom = 5.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "$level",
+                            style = MaterialTheme.typography.displaySmall.copy(
+                                fontSize = 30.sp,
+                                lineHeight = 32.sp,
+                                fontWeight = FontWeight.Black,
+                                fontFamily = FontFamily.Monospace
+                            ),
+                            color = TextPureWhite
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 10.dp, bottom = 4.dp)
+                        ) {
+                            Text(
+                                text = dynamicCurrentForm,
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                ),
+                                color = TextPureWhite,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "NEXT · $dynamicNextEvolution",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
+                                color = TextMuted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+
+                    Text(
+                        text = "$currentLevelXp/$xpPerLevel",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        ),
+                        color = themeColors.primary,
+                        modifier = Modifier.padding(bottom = 4.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -537,420 +714,528 @@ fun JourneyScreen(
                     )
                 }
 
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = "TOTAL $animatedXp XP",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 9.5.sp,
+                            letterSpacing = 1.2.sp,
+                            fontFamily = FontFamily.Monospace
+                        ),
+                        color = TextMuted
+                    )
+                    Text(
+                        text = if (xpToNextLevel > 0) "+$xpToNextLevel XP → LV ${level + 1}" else "MAXIMUM TIER",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 9.5.sp,
+                            letterSpacing = 1.2.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        ),
+                        color = themeColors.secondary
+                    )
+                }
+
+                if (nextGearTier != null) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "NEXT FORM · LV ${nextGearTier.levelReq} — ${nextGearTier.name.uppercase()}",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 9.5.sp,
+                            lineHeight = 13.sp,
+                            letterSpacing = 1.4.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        ),
+                        color = TextMuted,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(18.dp))
 
-                // Form Evolution: Current Form -> Next Evolution
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    SystemStatChip(
+                        icon = Icons.Filled.LocalFireDepartment,
+                        value = "$momentumDays",
+                        label = "DAY STREAK",
+                        accent = themeColors.primary,
+                        track = themeColors.innerSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                    SystemStatChip(
+                        icon = Icons.Filled.Bolt,
+                        value = "$totalFocusMinutes",
+                        label = "FOCUS MIN",
+                        accent = themeColors.secondary,
+                        track = themeColors.innerSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                    SystemStatChip(
+                        icon = Icons.Filled.CheckCircle,
+                        value = "$completedTasksCount",
+                        label = "QUESTS DONE",
+                        accent = themeColors.primary,
+                        track = themeColors.innerSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(22.dp))
+
+            // =========================================================================
+            // 3. DAILY QUEST — the core loop: real tasks, real deadline, real stakes
+            // =========================================================================
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .glassPanel(themeColors, 26.dp)
+                    .padding(18.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "DAILY QUEST",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                letterSpacing = 2.2.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            ),
+                            color = if (questCleared) sageGreen else themeColors.primary
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "PREPARATION TO BECOME STRONG",
+                            style = MaterialTheme.typography.titleSmall.copy(
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 0.3.sp
+                            ),
+                            color = TextPureWhite
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = "$questDone/$questTotal",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 19.sp,
+                                fontWeight = FontWeight.Black,
+                                fontFamily = FontFamily.Monospace
+                            ),
+                            color = if (questCleared) sageGreen else themeColors.primary
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = if (questCleared) "CLEARED" else "REMAINING",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 8.5.sp,
+                                letterSpacing = 1.4.sp,
+                                fontFamily = FontFamily.Monospace
+                            ),
+                            color = TextMuted
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(themeColors.trackBackground)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(animatedQuestProgress)
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(
+                                if (questCleared) {
+                                    Brush.horizontalGradient(listOf(sageGreen, sageGreen))
+                                } else {
+                                    themeColors.progressBarBrush
+                                }
+                            )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                if (todayTasks.isEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(themeColors.innerSurface.copy(alpha = 0.7f))
+                            .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(16.dp))
+                            .clickable { onContinueMission(null) }
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.NorthEast,
+                            contentDescription = null,
+                            tint = themeColors.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "NO QUESTS ASSIGNED",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.sp,
+                                    letterSpacing = 1.6.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    fontFamily = FontFamily.Monospace
+                                ),
+                                color = TextPureWhite
+                            )
+                            Spacer(modifier = Modifier.height(3.dp))
+                            Text(
+                                text = "Tap to assign today's preparation.",
+                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                                color = TextMuted
+                            )
+                        }
+                    }
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        todayTasks.take(6).forEach { task ->
+                            SystemQuestRow(
+                                task = task,
+                                accent = themeColors.primary,
+                                track = themeColors.innerSurface,
+                                onToggle = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    onToggleTask(task)
+                                }
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
-                        .background(themeColors.innerSurface)
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(
+                            if (questCleared) sageGreen.copy(alpha = 0.10f)
+                            else penaltyRed.copy(alpha = 0.10f)
+                        )
+                        .border(
+                            1.dp,
+                            if (questCleared) sageGreen.copy(alpha = 0.32f)
+                            else penaltyRed.copy(alpha = 0.32f),
+                            RoundedCornerShape(16.dp)
+                        )
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Icon(
+                        imageVector = if (questCleared) Icons.Filled.CheckCircle else Icons.Filled.Warning,
+                        contentDescription = null,
+                        tint = if (questCleared) sageGreen else penaltyRed,
+                        modifier = Modifier
+                            .padding(top = 1.dp)
+                            .size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            text = if (questCleared) "QUEST CLEARED" else "PENALTY PROTOCOL ARMED",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                letterSpacing = 1.6.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            ),
+                            color = if (questCleared) sageGreen else penaltyRed
+                        )
+                        Spacer(modifier = Modifier.height(5.dp))
+                        Text(
+                            text = if (questCleared) {
+                                "Reward unlocked: +$rewardXp XP banked and the chain extended. " +
+                                        "The system recorded today as earned."
+                            } else if (questTotal == 0) {
+                                "A day without a quest cannot be counted. The streak only " +
+                                        "survives days that were actually executed."
+                            } else {
+                                "Clear every quest before $countdownText or the momentum " +
+                                        "streak resets to day one. The system does not grade intentions."
+                            },
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontSize = 11.5.sp,
+                                lineHeight = 16.sp
+                            ),
+                            color = TextSecondary
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(22.dp))
+
+            // =========================================================================
+            // 4. MOMENTUM — the last seven days, earned or not
+            // =========================================================================
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .glassPanel(themeColors, 26.dp)
+                    .padding(18.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
                         Text(
-                            text = "CURRENT FORM",
+                            text = "MOMENTUM",
                             style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 9.sp,
+                                fontSize = 10.sp,
+                                letterSpacing = 2.2.sp,
+                                fontWeight = FontWeight.Bold,
                                 fontFamily = FontFamily.Monospace
                             ),
-                            color = TextMuted
+                            color = themeColors.primary
                         )
+                        Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            text = dynamicCurrentForm,
+                            text = "$momentumDays-day chain",
                             style = MaterialTheme.typography.titleSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
                             ),
                             color = TextPureWhite
                         )
                     }
-
-                    // Animated arrow
                     Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        imageVector = Icons.Filled.LocalFireDepartment,
                         contentDescription = null,
-                        tint = themeColors.primary,
-                        modifier = Modifier
-                            .offset(x = arrowOffset.dp)
-                            .size(16.dp)
+                        tint = themeColors.primary.copy(alpha = pulseGlow),
+                        modifier = Modifier.size(26.dp)
                     )
+                }
 
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text(
-                            text = "NEXT EVOLUTION",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 9.sp,
-                                fontFamily = FontFamily.Monospace
-                            ),
-                            color = themeColors.secondary
-                        )
-                        Text(
-                            text = dynamicNextEvolution,
-                            style = MaterialTheme.typography.titleSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
-                            ),
-                            color = themeColors.primary
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    weekActivity.forEach { day ->
+                        SystemDayCell(
+                            day = day,
+                            accent = themeColors.primary,
+                            track = themeColors.innerSurface,
+                            modifier = Modifier.weight(1f)
                         )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                // Cinematic Level Up Demo Button
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(themeColors.primary.copy(alpha = 0.14f))
-                        .border(1.dp, themeColors.cardBorder, RoundedCornerShape(12.dp))
-                        .clickable {
-                            showLevelUpCeremony = true
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        }
-                        .padding(vertical = 8.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.AutoAwesome,
-                        contentDescription = null,
-                        tint = themeColors.secondary,
-                        modifier = Modifier.size(13.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Experience Cinematic Level Up Ceremony",
+                        text = "$activeDaysThisWeek of ${weekActivity.size} days executed",
+                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
+                        color = TextSecondary
+                    )
+                    Text(
+                        text = streakVerdict,
                         style = MaterialTheme.typography.labelSmall.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 11.5.sp
+                            fontSize = 9.5.sp,
+                            letterSpacing = 1.2.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
                         ),
-                        color = themeColors.secondary
+                        color = if (activeDaysThisWeek >= weekActivity.size / 2) sageGreen else penaltyRed
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(22.dp))
 
             // =========================================================================
-            // 4. MOMENTUM SECTION (Instead of "Streak")
+            // 5. SYSTEM DIRECTIVE — the voice that will not let you off the hook
             // =========================================================================
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(themeColors.cardBackground)
-                    .border(1.dp, themeColors.cardBorder, RoundedCornerShape(18.dp))
-                    .padding(18.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(46.dp)
-                        .clip(CircleShape)
-                        .background(themeColors.primary.copy(alpha = 0.16f))
-                        .border(1.dp, themeColors.primary, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.LocalFireDepartment,
-                        contentDescription = "Momentum",
-                        tint = themeColors.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(16.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "MOMENTUM $momentumDays DAYS",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.ExtraBold,
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 15.sp,
-                            letterSpacing = 1.sp
-                        ),
-                        color = TextPureWhite
-                    )
-                    Text(
-                        text = if (momentumDays <= 1) "Day 1 of deliberate momentum. Forge your baseline identity." else "$momentumDays consecutive days of executing without breaking your identity.",
-                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                        color = TextMuted
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(26.dp))
-
-            // =========================================================================
-            // 5. IDENTITY ATTRIBUTES: ELEGANT ANIMATED BARS
-            // =========================================================================
-            Text(
-                text = "IDENTITY ATTRIBUTES",
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.6.sp,
-                    fontFamily = FontFamily.Monospace
-                ),
-                color = TextSecondary
-            )
-
-            Spacer(modifier = Modifier.height(14.dp))
-
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(22.dp))
-                    .background(themeColors.cardBackground)
-                    .border(1.dp, themeColors.cardBorder, RoundedCornerShape(22.dp))
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(
+                        Brush.linearGradient(
+                            listOf(
+                                themeColors.primary.copy(alpha = 0.16f),
+                                themeColors.cardBackground.copy(alpha = 0.82f),
+                                Color.White.copy(alpha = 0.03f)
+                            )
+                        )
+                    )
+                    .border(
+                        1.dp,
+                        themeColors.primary.copy(alpha = 0.30f),
+                        RoundedCornerShape(24.dp)
+                    )
+                    .padding(18.dp)
             ) {
-                identityAttributes.forEach { attr ->
-                    IdentityAttributeRow(attribute = attr, themeColors = themeColors)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(28.dp))
-
-            // =========================================================================
-            // 6. TODAY'S GROWTH (REPLACES BORING STATISTICS)
-            // =========================================================================
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "TODAY'S GROWTH",
-                    style = MaterialTheme.typography.labelMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.6.sp,
-                        fontFamily = FontFamily.Monospace
-                    ),
-                    color = TextSecondary
-                )
-
-                if (!claimedTodayXp) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "[ SYSTEM ]",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 10.sp,
+                            letterSpacing = 2.2.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        ),
+                        color = themeColors.primary
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(themeColors.primary.copy(alpha = 0.2f))
-                            .border(1.dp, themeColors.primary, RoundedCornerShape(12.dp))
-                            .clickable {
-                                onClaimXp(50)
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            }
-                            .padding(horizontal = 10.dp, vertical = 4.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "Claim +50 XP",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp
-                            ),
-                            color = themeColors.primary
-                        )
-                    }
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(themeColors.primary.copy(alpha = pulseGlow))
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Text(
+                    text = directiveText,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = 14.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        lineHeight = 21.sp
+                    ),
+                    color = TextPureWhite
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .width(3.dp)
+                            .height(16.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(themeColors.primary)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = motivationalMessages[activeMotivationalIndex],
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp
+                        ),
+                        color = TextSecondary
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
-
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                EvolutionGrowthCard(
-                    xp = "+20 XP",
-                    title = "Task completed",
-                    subtitle = if (completedTasksCount > 0) "$completedTasksCount of today's tasks done" else "No tasks completed yet today",
-                    icon = Icons.Default.CheckCircle,
-                    completed = completedTasksCount > 0,
-                    themeColors = themeColors
-                )
-                EvolutionGrowthCard(
-                    xp = "+1 XP/min",
-                    title = "Deep focus session",
-                    subtitle = if (totalFocusMinutes > 0) "$totalFocusMinutes minutes logged today" else "Start a sprint to earn focus XP",
-                    icon = Icons.Default.SelfImprovement,
-                    completed = totalFocusMinutes >= 10,
-                    themeColors = themeColors
-                )
-                EvolutionGrowthCard(
-                    xp = "+50 XP",
-                    title = "Daily momentum claim",
-                    subtitle = if (claimedTodayXp) "Claimed for today" else "Tap Claim to bank today's bonus",
-                    icon = Icons.Default.Bolt,
-                    completed = claimedTodayXp,
-                    themeColors = themeColors
-                )
-                EvolutionGrowthCard(
-                    xp = "NOTES",
-                    title = "Notes written",
-                    subtitle = if (notesCount > 0) "$notesCount notebook pages saved" else "Your notebook is still empty",
-                    icon = Icons.Default.MenuBook,
-                    completed = notesCount > 0,
-                    themeColors = themeColors
-                )
-            }
-
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(22.dp))
 
             // =========================================================================
-            // 7. MOTIVATIONAL SECTION: DAILY PERSONALIZED MESSAGE
+            // 6. IDENTITY ATTRIBUTES — what the quests are quietly building
             // =========================================================================
-            Text(
-                text = "DAILY REFLECTION",
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.6.sp,
-                    fontFamily = FontFamily.Monospace
-                ),
-                color = TextSecondary
+            SystemSectionLabel(
+                title = "IDENTITY ATTRIBUTES",
+                hint = "LEVEL ${level}",
+                accent = themeColors.primary
             )
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(themeColors.cardBackground)
-                    .border(1.dp, themeColors.primary.copy(alpha = 0.4f), RoundedCornerShape(18.dp))
-                    .padding(20.dp)
+                    .glassPanel(themeColors, 26.dp)
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                Column {
-                    Text(
-                        text = "\"${motivationalMessages[activeMotivationalIndex]}\"",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 16.sp,
-                            lineHeight = 24.sp
-                        ),
-                        color = TextPureWhite
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Psychological Identity Anchor",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontSize = 11.sp,
-                            fontFamily = FontFamily.Monospace
-                        ),
-                        color = themeColors.accentGlow
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(28.dp))
-
-            // =========================================================================
-            // 8. IDENTITY PROGRESSION TIERS
-            // =========================================================================
-            Text(
-                text = "IDENTITY PROGRESSION",
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.6.sp,
-                    fontFamily = FontFamily.Monospace
-                ),
-                color = TextSecondary
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "Milestones and evolutionary forms unlocked as discipline compounds.",
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = 12.sp),
-                color = TextMuted
-            )
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                evolutionTiers.forEach { tier ->
-                    val isUnlocked = level >= tier.levelReq
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(if (isUnlocked) themeColors.cardElevated else themeColors.cardBackground)
-                            .border(
-                                1.dp,
-                                if (isUnlocked) themeColors.primary.copy(alpha = 0.5f) else Color(0x18FFFFFF),
-                                RoundedCornerShape(16.dp)
-                            )
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(if (isUnlocked) themeColors.primary.copy(alpha = 0.2f) else Color(0x11FFFFFF)),
-                            contentAlignment = Alignment.Center
+                identityAttributes.forEach { attribute ->
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "L${tier.levelReq}",
+                                text = attribute.name.uppercase(),
                                 style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 10.5.sp,
+                                    letterSpacing = 1.6.sp,
                                     fontWeight = FontWeight.Bold,
                                     fontFamily = FontFamily.Monospace
                                 ),
-                                color = if (isUnlocked) themeColors.primary else TextMuted
+                                color = TextPureWhite
                             )
-                        }
-
-                        Spacer(modifier = Modifier.width(14.dp))
-
-                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = tier.name,
-                                style = MaterialTheme.typography.titleSmall.copy(
+                                text = "${(attribute.value * 100).toInt()}%",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 13.5.sp
+                                    fontFamily = FontFamily.Monospace
                                 ),
-                                color = if (isUnlocked) TextPureWhite else TextSecondary
-                            )
-                            Text(
-                                text = tier.description,
-                                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
-                                color = TextMuted
+                                color = themeColors.primary
                             )
                         }
-
-                        if (isUnlocked) {
-                            Icon(
-                                imageVector = Icons.Default.CheckCircle,
-                                contentDescription = "Unlocked",
-                                tint = themeColors.primary,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = "Locked",
-                                tint = TextMuted,
-                                modifier = Modifier.size(16.dp)
+                        Spacer(modifier = Modifier.height(7.dp))
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(5.dp)
+                                .clip(RoundedCornerShape(2.5.dp))
+                                .background(themeColors.trackBackground)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(attribute.value)
+                                    .height(5.dp)
+                                    .clip(RoundedCornerShape(2.5.dp))
+                                    .background(themeColors.progressBarBrush)
                             )
                         }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(30.dp))
+            Spacer(modifier = Modifier.height(22.dp))
 
-            // Collectible RPG Badges
-            Text(
-                text = "MOMENTUM BADGES",
-                style = MaterialTheme.typography.labelMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = 1.6.sp,
-                    fontFamily = FontFamily.Monospace
-                ),
-                color = TextSecondary
+            // =========================================================================
+            // 7. TITLES & MEDALS
+            // =========================================================================
+            SystemSectionLabel(
+                title = "TITLES & MEDALS",
+                hint = "${badges.count { it.unlockedDate == "Unlocked" }}/${badges.size} EARNED",
+                accent = themeColors.secondary
             )
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -965,7 +1250,202 @@ fun JourneyScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(40.dp))
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // =========================================================================
+            // 8. DAILY REWARD + MISSION CTA
+            // =========================================================================
+            if (!claimedTodayXp) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .glassPanel(themeColors, 24.dp)
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(themeColors.primary.copy(alpha = 0.16f))
+                            .border(1.dp, themeColors.primary.copy(alpha = 0.32f), CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Bolt,
+                            contentDescription = null,
+                            tint = themeColors.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "DAILY REWARD",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                letterSpacing = 1.8.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            ),
+                            color = TextPureWhite
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "+$rewardXp XP · claiming also marks today as active",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = TextMuted
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Button(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onClaimXp(rewardXp)
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = themeColors.primary,
+                            contentColor = Color(0xFF08040A)
+                        ),
+                        shape = RoundedCornerShape(14.dp),
+                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp)
+                    ) {
+                        Text(
+                            text = "CLAIM",
+                            style = MaterialTheme.typography.labelMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 1.4.sp
+                            )
+                        )
+                    }
+                }
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .glassPanel(themeColors, 24.dp)
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.CheckCircle,
+                        contentDescription = null,
+                        tint = sageGreen,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column {
+                        Text(
+                            text = "DAILY REWARD CLAIMED",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 10.sp,
+                                letterSpacing = 1.8.sp,
+                                fontWeight = FontWeight.Bold,
+                                fontFamily = FontFamily.Monospace
+                            ),
+                            color = sageGreen
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Come back tomorrow and extend the chain.",
+                            style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            color = TextMuted
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .glassPanel(themeColors, 24.dp)
+                    .padding(16.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = if (activeMission != null) "ACTIVE MISSION" else "NO ACTIVE MISSION",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            fontSize = 10.sp,
+                            letterSpacing = 1.8.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        ),
+                        color = TextMuted
+                    )
+                }
+                Spacer(modifier = Modifier.height(7.dp))
+                Text(
+                    text = activeMission?.title ?: "Assign one mission and the system will track every hour you give it.",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.Medium,
+                        lineHeight = 19.sp
+                    ),
+                    color = TextPureWhite
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Button(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        onContinueMission(activeMission)
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = themeColors.primary,
+                        contentColor = Color(0xFF08040A)
+                    ),
+                    shape = RoundedCornerShape(16.dp),
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 15.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = if (activeMission != null) "CONTINUE MISSION" else "ASSIGN TODAY'S QUEST",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 1.4.sp,
+                            fontSize = 12.5.sp
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .size(16.dp)
+                            .offset(x = arrowOffset.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        showLevelUpCeremony = true
+                    }
+                    .padding(vertical = 10.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "PREVIEW NEXT EVOLUTION CEREMONY",
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 9.5.sp,
+                        letterSpacing = 2.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    ),
+                    color = TextMuted,
+                    textAlign = TextAlign.Center
+                )
+            }
+
+            Spacer(modifier = Modifier.height(30.dp))
+
         }
 
         // =========================================================================
@@ -1004,152 +1484,6 @@ fun JourneyScreen(
         }
     }
 }
-}
-
-/**
- * Elegant Animated Identity Attribute Row.
- */
-@Composable
-private fun IdentityAttributeRow(attribute: IdentityAttributeItem, themeColors: LevelThemeColors) {
-    val animatedPercent by animateFloatAsState(
-        targetValue = attribute.value,
-        animationSpec = spring(stiffness = 200f, dampingRatio = 0.85f),
-        label = "attr_anim_${attribute.name}"
-    )
-
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = attribute.name,
-                style = MaterialTheme.typography.titleSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.5.sp
-                ),
-                color = TextPureWhite
-            )
-            Text(
-                text = "${(animatedPercent * 100).toInt()}%",
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 12.sp
-                ),
-                color = themeColors.primary
-            )
-        }
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        // Minimalist animated progress bar
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(5.dp)
-                .clip(RoundedCornerShape(2.5.dp))
-                .background(themeColors.trackBackground)
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(animatedPercent)
-                    .height(5.dp)
-                    .clip(RoundedCornerShape(2.5.dp))
-                    .background(
-                        Brush.horizontalGradient(
-                            listOf(themeColors.deep, themeColors.primary)
-                        )
-                    )
-            )
-        }
-
-        Spacer(modifier = Modifier.height(3.dp))
-
-        Text(
-            text = attribute.description,
-            style = MaterialTheme.typography.bodySmall.copy(fontSize = 10.5.sp),
-            color = TextMuted
-        )
-    }
-}
-
-/**
- * Rewarding Growth Card.
- */
-@Composable
-private fun EvolutionGrowthCard(
-    xp: String,
-    title: String,
-    subtitle: String,
-    icon: ImageVector,
-    completed: Boolean,
-    themeColors: LevelThemeColors
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(themeColors.cardBackground)
-            .border(
-                1.dp,
-                if (completed) themeColors.primary.copy(alpha = 0.35f) else Color(0x18FFFFFF),
-                RoundedCornerShape(16.dp)
-            )
-            .padding(14.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(CircleShape)
-                .background(if (completed) themeColors.primary.copy(alpha = 0.2f) else Color(0x11FFFFFF)),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = if (completed) themeColors.primary else TextMuted,
-                modifier = Modifier.size(18.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.width(14.dp))
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.5.sp
-                ),
-                color = TextPureWhite
-            )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.5.sp),
-                color = TextMuted
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(10.dp))
-                .background(if (completed) themeColors.primary.copy(alpha = 0.15f) else Color(0x18FFFFFF))
-                .padding(horizontal = 8.dp, vertical = 4.dp)
-        ) {
-            Text(
-                text = xp,
-                style = MaterialTheme.typography.labelSmall.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 11.sp
-                ),
-                color = if (completed) themeColors.primary else TextMuted
-            )
-        }
-    }
 }
 
 /**
@@ -1492,4 +1826,271 @@ private fun BadgeInspectionDialog(
             }
         }
     }
+}
+// ==========================================================================
+// THE SYSTEM PANEL — shared building blocks
+// ==========================================================================
+
+/** Frosted glass surface: layered translucency, hairline light edge, palette glow. */
+private fun Modifier.glassPanel(themeColors: LevelThemeColors, radius: Dp = 26.dp): Modifier = this
+    .clip(RoundedCornerShape(radius))
+    .background(
+        Brush.linearGradient(
+            listOf(
+                Color.White.copy(alpha = 0.075f),
+                themeColors.cardBackground.copy(alpha = 0.74f),
+                Color.White.copy(alpha = 0.028f)
+            )
+        )
+    )
+    .border(
+        width = 1.dp,
+        brush = Brush.linearGradient(
+            listOf(
+                Color.White.copy(alpha = 0.20f),
+                themeColors.primary.copy(alpha = 0.26f),
+                Color.White.copy(alpha = 0.05f)
+            )
+        ),
+        shape = RoundedCornerShape(radius)
+    )
+
+/** Monospace section label with an optional stat hint on the same baseline. */
+@Composable
+private fun SystemSectionLabel(title: String, hint: String? = null, accent: Color) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 10.5.sp,
+                lineHeight = 14.sp,
+                letterSpacing = 2.2.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace
+            ),
+            color = TextSecondary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false)
+        )
+        if (hint != null) {
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = hint,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontSize = 9.sp,
+                    lineHeight = 13.sp,
+                    letterSpacing = 1.4.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                ),
+                color = accent,
+                maxLines = 1,
+                textAlign = TextAlign.End
+            )
+        }
+    }
+}
+
+/** Compact stat read-out used inside the hunter card. */
+@Composable
+private fun SystemStatChip(
+    icon: ImageVector,
+    value: String,
+    label: String,
+    accent: Color,
+    track: Color,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(track.copy(alpha = 0.85f))
+            .border(1.dp, Color.White.copy(alpha = 0.07f), RoundedCornerShape(16.dp))
+            .padding(horizontal = 10.dp, vertical = 11.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = accent,
+            modifier = Modifier.size(15.dp)
+        )
+        Spacer(modifier = Modifier.height(7.dp))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleMedium.copy(
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Black,
+                fontFamily = FontFamily.Monospace
+            ),
+            color = TextPureWhite,
+            maxLines = 1
+        )
+        Spacer(modifier = Modifier.height(3.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 8.sp,
+                letterSpacing = 1.1.sp,
+                fontFamily = FontFamily.Monospace
+            ),
+            color = TextMuted,
+            maxLines = 1
+        )
+    }
+}
+
+/** One real task rendered as a System quest line. Tap to clear it. */
+@Composable
+private fun SystemQuestRow(
+    task: TaskEntity,
+    accent: Color,
+    track: Color,
+    onToggle: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(track.copy(alpha = 0.80f))
+            .border(
+                1.dp,
+                if (task.isCompleted) accent.copy(alpha = 0.30f) else Color.White.copy(alpha = 0.06f),
+                RoundedCornerShape(14.dp)
+            )
+            .clickable { onToggle() }
+            .padding(horizontal = 12.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(20.dp)
+                .clip(CircleShape)
+                .background(if (task.isCompleted) accent else Color.Transparent)
+                .border(
+                    1.5.dp,
+                    if (task.isCompleted) accent else Color.White.copy(alpha = 0.22f),
+                    CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            if (task.isCompleted) {
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = null,
+                    tint = Color(0xFF08040A),
+                    modifier = Modifier.size(12.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Text(
+            text = task.title,
+            style = MaterialTheme.typography.bodyMedium.copy(
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium
+            ),
+            color = if (task.isCompleted) TextMuted else TextPureWhite,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textDecoration = if (task.isCompleted) TextDecoration.LineThrough else null,
+            modifier = Modifier.weight(1f)
+        )
+
+        Spacer(modifier = Modifier.width(10.dp))
+
+        Text(
+            text = if (task.isCompleted) "CLEARED" else "+${if (task.isMission) 100 else 20} XP",
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.5.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace
+            ),
+            color = if (task.isCompleted) accent else TextMuted
+        )
+    }
+}
+
+/** One day of the seven-day momentum strip. */
+@Composable
+private fun SystemDayCell(
+    day: DayActivity,
+    accent: Color,
+    track: Color,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = day.label,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 9.sp,
+                letterSpacing = 1.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace
+            ),
+            color = if (day.isToday) accent else TextMuted
+        )
+
+        Spacer(modifier = Modifier.height(7.dp))
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(46.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(if (day.active) accent.copy(alpha = 0.16f) else track.copy(alpha = 0.85f))
+                .border(
+                    width = if (day.isToday) 1.5.dp else 1.dp,
+                    color = when {
+                        day.isToday -> accent
+                        day.active -> accent.copy(alpha = 0.32f)
+                        else -> Color.White.copy(alpha = 0.06f)
+                    },
+                    shape = RoundedCornerShape(14.dp)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "${day.dayOfMonth}",
+                style = MaterialTheme.typography.titleSmall.copy(
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                ),
+                color = if (day.active) TextPureWhite else TextMuted
+            )
+        }
+
+        Spacer(modifier = Modifier.height(7.dp))
+
+        Box(
+            modifier = Modifier
+                .size(5.dp)
+                .clip(CircleShape)
+                .background(if (day.active) accent else Color.Transparent)
+        )
+    }
+}
+
+/** Seconds remaining until the System's daily reset (local midnight). */
+private fun secondsUntilMidnight(): Int {
+    val now = java.util.Calendar.getInstance()
+    val next = (now.clone() as java.util.Calendar).apply {
+        add(java.util.Calendar.DAY_OF_YEAR, 1)
+        set(java.util.Calendar.HOUR_OF_DAY, 0)
+        set(java.util.Calendar.MINUTE, 0)
+        set(java.util.Calendar.SECOND, 0)
+        set(java.util.Calendar.MILLISECOND, 0)
+    }
+    return ((next.timeInMillis - now.timeInMillis) / 1000L).toInt()
 }

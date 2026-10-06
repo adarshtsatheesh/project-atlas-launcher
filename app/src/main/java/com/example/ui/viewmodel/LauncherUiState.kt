@@ -57,6 +57,17 @@ enum class EditCategory(val label: String) {
     }
 }
 
+/**
+ * One day in the momentum strip: what really happened, not what was planned.
+ * [active] is derived from tasks that were actually completed that day.
+ */
+data class DayActivity(
+    val label: String,
+    val dayOfMonth: Int,
+    val active: Boolean,
+    val isToday: Boolean
+)
+
 data class LauncherUiState(
     val activeMission: TaskEntity? = null,
     val activeTasks: List<TaskEntity> = emptyList(),
@@ -128,6 +139,8 @@ data class LauncherUiState(
     val currentFormTitle: String = "Focused Starter",
     val nextEvolutionTitle: String = "Level 2 • Disciplined Builder",
     val momentumDays: Int = 1,
+    /** Every day with a real action, as yyyyMMdd keys — the streak's source of truth. */
+    val activeDayKeys: Set<String> = emptySet(),
     val focusAttribute: Float = 0.20f,
     val disciplineAttribute: Float = 0.20f,
     val executionAttribute: Float = 0.20f,
@@ -176,6 +189,63 @@ data class LauncherUiState(
         }
 
     companion object {
+        /** Visible dock slots on the home screen and in the drawer dock strip. */
+        const val MAX_DOCK_APPS = 5
+
+        /**
+         * Maps persisted pin keys (in stored order) onto the live installed-app
+         * list. The result keeps the exact user arrangement and silently skips
+         * pins whose app is temporarily missing, instead of resetting the dock.
+         */
+        fun orderPinnedApps(apps: List<AppItem>, pinKeys: List<String>): List<AppItem> {
+            if (pinKeys.isEmpty() || apps.isEmpty()) return emptyList()
+            val byUniqueKey = apps.associateBy { it.uniqueKey }
+            val ordered = ArrayList<AppItem>(pinKeys.size)
+            val seen = HashSet<String>(pinKeys.size)
+            for (key in pinKeys) {
+                val match = byUniqueKey[key]
+                    ?: apps.firstOrNull { !it.isCloned && it.packageName == key }
+                    ?: apps.firstOrNull { it.packageName == key }
+                    ?: continue
+                if (seen.add(match.uniqueKey)) ordered.add(match)
+            }
+            return ordered
+        }
+
+        /**
+         * The last [days] days of *real* execution (oldest first), derived from the
+         * completion timestamps of finished tasks. Used by the System panel's
+         * momentum strip, so the streak shown is earned rather than decorative.
+         */
+        fun computeWeekActivity(
+            tasks: List<TaskEntity>,
+            activeDayKeys: Set<String> = emptySet(),
+            days: Int = 7
+        ): List<DayActivity> {
+            val finished = tasks.filter { it.isCompleted && (it.completedAt ?: 0L) > 0L }
+            val labels = arrayOf("S", "M", "T", "W", "T", "F", "S")
+            val keyFormat = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US)
+            val result = ArrayList<DayActivity>(days)
+            for (offset in days - 1 downTo 0) {
+                val day = java.util.Calendar.getInstance()
+                day.add(java.util.Calendar.DAY_OF_YEAR, -offset)
+                val dayMillis = day.timeInMillis
+                // A day counts when anything real happened: a completed task, a focus
+                // block or a claimed daily reward — the same rule the streak uses.
+                val active = activeDayKeys.contains(keyFormat.format(day.time)) ||
+                        finished.any { DateUtils.isSameDay(it.completedAt ?: 0L, dayMillis) }
+                result.add(
+                    DayActivity(
+                        label = labels[day.get(java.util.Calendar.DAY_OF_WEEK) - 1],
+                        dayOfMonth = day.get(java.util.Calendar.DAY_OF_MONTH),
+                        active = active,
+                        isToday = offset == 0
+                    )
+                )
+            }
+            return result
+        }
+
         fun computeTodayTasks(active: List<TaskEntity>, completed: List<TaskEntity>): List<TaskEntity> {
             val now = System.currentTimeMillis()
             return (active + completed).filter { task ->
@@ -216,7 +286,9 @@ data class LauncherUiState(
             if (query.isNotBlank()) {
                 val q = query.trim().lowercase()
                 list = list.filter {
-                    it.name.lowercase().contains(q) || it.packageName.lowercase().contains(q)
+                    it.displayName.lowercase().contains(q) ||
+                        it.name.lowercase().contains(q) ||
+                        it.packageName.lowercase().contains(q)
                 }
             }
             return list

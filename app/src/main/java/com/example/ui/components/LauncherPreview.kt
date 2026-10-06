@@ -28,6 +28,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -70,8 +71,15 @@ fun LauncherHomeCanvas(
     onQuickAddTask: (String) -> Unit = {},
     onOpenCalendarPlanner: () -> Unit = {},
     onLaunchApp: (AppItem) -> Unit = {},
-    onTogglePin: (AppItem) -> Unit = {},
+    onRemoveDockApp: (AppItem) -> Unit = {},
     onOpenAppDrawer: () -> Unit = {},
+    /**
+     * Reports the real dock's screen bounds. The app drawer uses it as the drop
+     * target when an app is dragged out of the drawer onto the home screen.
+     */
+    onDockBounds: (Rect) -> Unit = {},
+    /** False when this canvas is mirrored inside the editor phone mockup. */
+    dockInteractive: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val appearance = uiState.appearanceState
@@ -125,8 +133,10 @@ fun LauncherHomeCanvas(
                 hideLabels = uiState.hideDockLabels,
                 isEditMode = isEditMode,
                 onLaunchApp = onLaunchApp,
-                onTogglePin = onTogglePin,
-                onOpenAppDrawer = onOpenAppDrawer
+                onRemoveApp = onRemoveDockApp,
+                onOpenAppDrawer = onOpenAppDrawer,
+                onDockBounds = onDockBounds,
+                interactive = dockInteractive
             )
         }
     }
@@ -222,7 +232,8 @@ fun LauncherPreview(
                         ) {
                             LauncherHomeCanvas(
                                 uiState = uiState,
-                                isEditMode = false
+                                isEditMode = false,
+                                dockInteractive = false
                             )
                         }
 

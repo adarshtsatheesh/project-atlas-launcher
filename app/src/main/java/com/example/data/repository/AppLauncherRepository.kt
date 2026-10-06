@@ -10,7 +10,9 @@ import android.os.Build
 import android.os.Process
 import android.os.UserHandle
 import android.os.UserManager
+import com.example.data.local.dao.AppCustomizationDao
 import com.example.data.local.dao.PinnedAppDao
+import com.example.data.local.entity.AppCustomizationEntity
 import com.example.data.local.entity.PinnedAppEntity
 import com.example.domain.model.AppItem
 import kotlinx.coroutines.CoroutineScope
@@ -24,11 +26,20 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 class AppLauncherRepository(
     private val context: Context,
-    private val pinnedAppDao: PinnedAppDao
+    private val pinnedAppDao: PinnedAppDao,
+    private val appCustomizationDao: AppCustomizationDao,
+    /**
+     * True only on a brand-new install (no database file yet). Seeds the classic
+     * four-app dock as *real, removable pins* exactly once — existing users keep
+     * whatever dock they had, even an empty one.
+     */
+    private val seedDefaultDock: Boolean = false
 ) {
     private val packageManager: PackageManager = context.packageManager
     private val selfPackageName: String = context.packageName
@@ -69,6 +80,7 @@ class AppLauncherRepository(
 
         repositoryScope.launch {
             refreshApps()
+            if (seedDefaultDock) seedDefaultDockIfNeeded()
         }
     }
 
@@ -221,14 +233,11 @@ class AppLauncherRepository(
             }
         }
 
-        // Clean up any pinned apps in database that are no longer installed on the device!
-        val validKeys = finalApps.flatMap { listOf(it.uniqueKey, it.packageName) }
-        if (validKeys.isNotEmpty()) {
-            try {
-                pinnedAppDao.removeUninstalledPinnedApps(validKeys)
-            } catch (e: Exception) {
-                // Ignore any DB cleanup issues
-            }
+        // Prune pins whose package is genuinely gone from the device.
+        // (The old code mass-deleted every pin missing from a single scan — a
+        // partial/early boot scan silently wiped the whole dock.)
+        if (finalApps.isNotEmpty()) {
+            pruneUninstalledPins()
         }
 
         // Pre-warm AppIconCache on background IO thread so Compose UI renders 120 FPS instantly
@@ -249,44 +258,207 @@ class AppLauncherRepository(
                 list.filterNot { it.packageName == packageName }
             }
         }
-        try {
-            pinnedAppDao.unpinApp(packageName)
-        } catch (e: Exception) {
-            // Ignore
-        }
+        // Do NOT unpin eagerly: a single profile's removal (or an app update)
+        // must never drop the dock pin. refreshApps() prunes only packages that
+        // are really gone from every profile.
         refreshApps()
     }
 
     val pinnedApps: Flow<List<PinnedAppEntity>> = pinnedAppDao.getAllPinnedApps()
 
+    private val appCustomizations: Flow<List<AppCustomizationEntity>> = appCustomizationDao.getAll()
+
     val combinedApps: Flow<List<AppItem>> = combine(
         _installedApps,
-        pinnedApps
-    ) { installedList, pinnedList ->
+        pinnedApps,
+        appCustomizations
+    ) { installedList, pinnedList, customList ->
         val pinnedMap = pinnedList.associateBy { it.packageName }
+        val customMap = customList.associateBy { it.uniqueKey }
         installedList.map { app ->
             val pinnedEntity = pinnedMap[app.uniqueKey] ?: pinnedMap[app.packageName]
+            val custom = customMap[app.uniqueKey] ?: customMap[app.packageName]
             app.copy(
                 isPinned = pinnedEntity != null,
-                launchCount = pinnedEntity?.launchCount ?: 0
+                launchCount = pinnedEntity?.launchCount ?: 0,
+                customLabel = custom?.customLabel,
+                iconPresetId = custom?.iconPresetId,
+                customIconUri = custom?.customIconUri
             )
         }
     }.flowOn(Dispatchers.Default)
 
-    suspend fun togglePin(app: AppItem) {
-        val pinKey = if (app.isCloned) app.uniqueKey else app.packageName
-        if (app.isPinned) {
-            pinnedAppDao.unpinApp(pinKey)
-            pinnedAppDao.unpinApp(app.packageName)
+    // ---------------------------------------------------------------------
+    // Dock (pinned apps) — order is stored explicitly and never recomputed
+    // from the alphabetical app list, so the user's arrangement sticks.
+    // ---------------------------------------------------------------------
+
+    private val pinMutex = Mutex()
+
+    private fun pinKeyFor(app: AppItem): String =
+        if (app.isCloned) app.uniqueKey else app.packageName
+
+    /**
+     * Pin [app] at [index] (0 = far left), or move it there when it is already
+     * pinned. A null [index] appends to the end of the dock.
+     */
+    suspend fun pinAppAt(app: AppItem, index: Int? = null) = pinMutex.withLock {
+        val key = pinKeyFor(app)
+        val current = pinnedAppDao.getPinnedAppsOnce().toMutableList()
+        val existingIndex = current.indexOfFirst { it.packageName == key }
+        val insertAt = (index ?: (if (existingIndex >= 0) existingIndex else current.size))
+            .coerceIn(0, current.size)
+
+        if (existingIndex >= 0) {
+            if (existingIndex == insertAt) return@withLock
+            val item = current.removeAt(existingIndex)
+            current.add((if (insertAt > existingIndex) insertAt - 1 else insertAt).coerceIn(0, current.size), item)
         } else {
-            pinnedAppDao.insertOrUpdate(
-                PinnedAppEntity(
-                    packageName = pinKey,
-                    label = app.name,
-                    orderIndex = 0
-                )
+            current.add(
+                insertAt,
+                PinnedAppEntity(packageName = key, label = app.name, orderIndex = insertAt)
             )
         }
+        persistPinOrder(current)
+    }
+
+    /** Insertion-index reorder: [to] is the index in the list *before* removal. */
+    suspend fun movePin(from: Int, to: Int) = pinMutex.withLock {
+        val current = pinnedAppDao.getPinnedAppsOnce().toMutableList()
+        if (from !in current.indices) return@withLock
+        val item = current.removeAt(from)
+        val target = (if (to > from) to - 1 else to).coerceIn(0, current.size)
+        if (target == from) {
+            current.add(from, item)
+            return@withLock
+        }
+        current.add(target, item)
+        persistPinOrder(current)
+    }
+
+    suspend fun removePin(app: AppItem) = pinMutex.withLock {
+        pinnedAppDao.unpinApp(pinKeyFor(app))
+        // Legacy compatibility: pins written by older builds used the plain
+        // package name even for dual apps.
+        if (app.isCloned) pinnedAppDao.unpinApp(app.packageName)
+        persistPinOrder(pinnedAppDao.getPinnedAppsOnce())
+    }
+
+    private suspend fun persistPinOrder(list: List<PinnedAppEntity>) {
+        try {
+            // Rewrite membership + order together; an @Update alone never inserted
+            // a newly pinned app, so pins silently vanished on the way to disk.
+            pinnedAppDao.replacePins(list.mapIndexed { i, entity -> entity.copy(orderIndex = i) })
+        } catch (e: Exception) {
+            // Ignore persistence hiccups — the next write retries the order.
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // App customization (rename + icon override)
+    // ---------------------------------------------------------------------
+
+    suspend fun saveAppCustomization(
+        app: AppItem,
+        customLabel: String?,
+        iconPresetId: Int?,
+        customIconUri: String?
+    ) = withContext(Dispatchers.IO) {
+        try {
+            if (customLabel == null && iconPresetId == null && customIconUri == null) {
+                appCustomizationDao.delete(app.uniqueKey)
+            } else {
+                appCustomizationDao.upsert(
+                    AppCustomizationEntity(
+                        uniqueKey = app.uniqueKey,
+                        customLabel = customLabel,
+                        iconPresetId = iconPresetId,
+                        customIconUri = customIconUri,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                )
+            }
+        } catch (e: Exception) {
+            // Ignore
+        }
+    }
+
+    suspend fun resetAppCustomization(app: AppItem) = withContext(Dispatchers.IO) {
+        try {
+            appCustomizationDao.delete(app.uniqueKey)
+        } catch (e: Exception) {
+            // Ignore
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Maintenance
+    // ---------------------------------------------------------------------
+
+    /**
+     * Removes a pin only when its base package is no longer installed for any
+     * profile. Safe against partial scans, work profiles and dual apps.
+     */
+    private suspend fun pruneUninstalledPins() {
+        val pins = try {
+            pinnedAppDao.getPinnedAppsOnce()
+        } catch (e: Exception) {
+            return
+        }
+        for (pin in pins) {
+            val pkg = pin.packageName.substringBefore('#')
+            if (!isPackageInstalledForAnyProfile(pkg)) {
+                try {
+                    pinnedAppDao.unpinApp(pin.packageName)
+                } catch (e: Exception) {
+                    // Ignore
+                }
+            }
+        }
+    }
+
+    private fun isPackageInstalledForAnyProfile(packageName: String): Boolean {
+        try {
+            packageManager.getApplicationInfo(packageName, 0)
+            return true
+        } catch (e: Exception) {
+            // Not visible to the primary user (work profile / dual app) — fall
+            // back to the live launcher scan before declaring it gone.
+        }
+        return _installedApps.value.any { it.packageName == packageName }
+    }
+
+    /** First-run only: seed the classic dock as real pins the user can edit. */
+    private suspend fun seedDefaultDockIfNeeded() {
+        try {
+            if (pinnedAppDao.getPinnedAppsOnce().isNotEmpty()) return
+            val defaults = listOf(
+                "Phone" to listOf("com.google.android.dialer", "com.android.dialer", "com.android.contacts"),
+                "Messages" to listOf("com.google.android.apps.messaging", "com.android.mms", "com.android.messaging"),
+                "Browser" to listOf("com.android.chrome", "com.google.android.browser", "com.android.browser"),
+                "Camera" to listOf("com.google.android.GoogleCamera", "com.android.camera", "com.oplus.camera")
+            )
+            var index = 0
+            for ((label, packages) in defaults) {
+                val app = resolveDefaultDockApp(label, packages) ?: continue
+                pinnedAppDao.insertOrUpdate(
+                    PinnedAppEntity(packageName = app.packageName, label = app.name, orderIndex = index)
+                )
+                index++
+            }
+        } catch (e: Exception) {
+            // Ignore — the user can always drag apps into the dock.
+        }
+    }
+
+    private fun resolveDefaultDockApp(label: String, candidatePackages: List<String>): AppItem? {
+        val installed = _installedApps.value
+        installed.firstOrNull { !it.isCloned && it.name.equals(label, ignoreCase = true) }
+            ?.let { return it }
+        for (pkg in candidatePackages) {
+            installed.firstOrNull { !it.isCloned && it.packageName == pkg }?.let { return it }
+        }
+        return null
     }
 
     suspend fun launchApp(app: AppItem): Boolean = withContext(Dispatchers.Main) {

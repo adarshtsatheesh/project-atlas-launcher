@@ -23,10 +23,25 @@ import com.example.ui.viewmodel.LauncherViewModel
 class MainActivity : ComponentActivity() {
 
     private val viewModel: LauncherViewModel by viewModels {
+        // Seed the classic four-app dock ONCE: on a brand new install, or as a
+        // one-time recovery for installs whose dock was already emptied by the
+        // old reset bug. The flag makes sure it never happens again — after
+        // this the dock only changes when the user changes it.
+        val prefs = getSharedPreferences("atlas_launcher_prefs", Context.MODE_PRIVATE)
+        val isFreshInstall = !getDatabasePath("atlas_launcher.db").exists()
+        val shouldSeedDefaultDock = isFreshInstall || !prefs.getBoolean("dock_seeded_v1", false)
+        if (shouldSeedDefaultDock) {
+            prefs.edit().putBoolean("dock_seeded_v1", true).apply()
+        }
         val database = AtlasDatabase.getInstance(applicationContext)
         val taskRepository = TaskRepository(database.taskDao())
         val focusRepository = FocusRepository(database.focusDao())
-        val appLauncherRepository = AppLauncherRepository(applicationContext, database.pinnedAppDao())
+        val appLauncherRepository = AppLauncherRepository(
+            context = applicationContext,
+            pinnedAppDao = database.pinnedAppDao(),
+            appCustomizationDao = database.appCustomizationDao(),
+            seedDefaultDock = shouldSeedDefaultDock
+        )
         val noteRepository = NoteRepository(database.noteDao())
         LauncherViewModel.Factory(taskRepository, focusRepository, appLauncherRepository, noteRepository, applicationContext)
     }
@@ -39,7 +54,11 @@ class MainActivity : ComponentActivity() {
             when (action) {
                 Intent.ACTION_PACKAGE_REMOVED,
                 Intent.ACTION_PACKAGE_FULLY_REMOVED -> {
-                    if (!packageName.isNullOrBlank()) {
+                    // An app *update* also broadcasts ACTION_PACKAGE_REMOVED with
+                    // EXTRA_REPLACING=true — treating it as a removal used to
+                    // unpin dock apps every time an app updated.
+                    val replacing = intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)
+                    if (!packageName.isNullOrBlank() && !replacing) {
                         viewModel.onPackageRemoved(packageName)
                     } else {
                         viewModel.refreshApps()

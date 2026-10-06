@@ -50,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -78,6 +79,7 @@ import com.example.ui.components.MountainMistBackdrop
 import com.example.ui.components.AtlasWallpaperBackdrop
 import com.example.ui.components.OnboardingSheet
 import com.example.ui.components.SettingsScreen
+import com.example.util.AppSystemActions
 import com.example.ui.theme.AtlasBackground
 import com.example.ui.theme.AtlasBorder
 import com.example.ui.theme.AtlasCard
@@ -88,6 +90,7 @@ import com.example.ui.theme.SoftSageGreen
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPureWhite
 import com.example.ui.theme.TextSecondary
+import com.example.ui.viewmodel.LauncherUiState
 import com.example.ui.viewmodel.LauncherViewModel
 import com.example.ui.viewmodel.MockupScreen
 import com.example.util.LockScreenManager
@@ -103,6 +106,10 @@ fun HomeScreen(
     val haptic = LocalHapticFeedback.current
 
     var showLockPermissionDialog by remember { mutableStateOf(false) }
+
+    // Screen bounds of the real home dock, measured by the dock itself. The app
+    // drawer uses it as the drop target for apps dragged out of the drawer.
+    var homeDockBounds by remember { mutableStateOf(Rect.Zero) }
 
     // Direct system lock trigger for real device lock screen
     val lockDeviceAction: () -> Unit = {
@@ -314,8 +321,9 @@ fun HomeScreen(
                 },
                 onOpenCalendarPlanner = { if (!uiState.isEditMode) viewModel.openMissions() },
                 onLaunchApp = { if (!uiState.isEditMode) viewModel.launchApp(it) },
-                onTogglePin = { viewModel.toggleAppPin(it) },
-                onOpenAppDrawer = { if (!uiState.isEditMode) viewModel.openAppDrawer() }
+                onRemoveDockApp = { viewModel.removeDockApp(it) },
+                onOpenAppDrawer = { if (!uiState.isEditMode) viewModel.openAppDrawer() },
+                onDockBounds = { homeDockBounds = it }
             )
         }
 
@@ -391,6 +399,7 @@ fun HomeScreen(
         ) {
             AppDrawerSheet(
                 apps = uiState.filteredApps,
+                pinnedApps = uiState.pinnedApps,
                 searchQuery = uiState.appSearchQuery,
                 selectedCategory = uiState.selectedAppCategory,
                 iconSize = uiState.appIconSize,
@@ -401,7 +410,16 @@ fun HomeScreen(
                 onSearchQueryChange = { viewModel.onSearchQueryChanged(it) },
                 onSelectCategory = { viewModel.selectAppCategory(it) },
                 onLaunchApp = { viewModel.launchApp(it) },
-                onTogglePin = { viewModel.toggleAppPin(it) },
+                onPinApp = { app, index -> viewModel.pinAppToDock(app, index) },
+                onRemovePinnedApp = { viewModel.removeDockApp(it) },
+                homeDockBounds = homeDockBounds,
+                onOpenAppInfo = { AppSystemActions.openAppInfo(context, it) },
+                onUninstallApp = { AppSystemActions.uninstallApp(context, it) },
+                onShareApp = { AppSystemActions.shareApp(context, it) },
+                onSaveAppEdit = { app, label, presetId, iconUri ->
+                    viewModel.saveAppCustomization(app, label, presetId, iconUri)
+                },
+                onResetAppEdit = { viewModel.resetAppCustomization(it) },
                 onClose = { viewModel.closeAppDrawer() }
             )
         }
@@ -428,6 +446,12 @@ fun HomeScreen(
                 momentumDays = uiState.momentumDays,
                 unlockedBadges = uiState.unlockedBadges,
                 colorPalette = uiState.selectedColorPalette,
+                todayTasks = uiState.todayTasks,
+                weekActivity = LauncherUiState.computeWeekActivity(
+                    tasks = uiState.activeTasks + uiState.completedTasks,
+                    activeDayKeys = uiState.activeDayKeys
+                ),
+                onToggleTask = { viewModel.toggleTaskCompletion(it) },
                 onClaimXp = { viewModel.claimTodayXp(it) },
                 onUpdateIdentityTitle = { viewModel.setIdentityTitle(it) },
                 onUpdateProfileName = { viewModel.setProfileName(it) },
@@ -501,6 +525,12 @@ fun HomeScreen(
                 momentumDays = uiState.momentumDays,
                 unlockedBadges = uiState.unlockedBadges,
                 colorPalette = uiState.selectedColorPalette,
+                todayTasks = uiState.todayTasks,
+                weekActivity = LauncherUiState.computeWeekActivity(
+                    tasks = uiState.activeTasks + uiState.completedTasks,
+                    activeDayKeys = uiState.activeDayKeys
+                ),
+                onToggleTask = { viewModel.toggleTaskCompletion(it) },
                 onClaimXp = { viewModel.claimTodayXp(it) },
                 onUpdateIdentityTitle = { viewModel.setIdentityTitle(it) },
                 onUpdateProfileName = { viewModel.setProfileName(it) },

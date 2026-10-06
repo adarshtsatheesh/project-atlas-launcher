@@ -9,12 +9,12 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,40 +33,45 @@ import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Message
 import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.outlined.KeyboardArrowUp
+import androidx.compose.material.icons.outlined.RemoveCircleOutline
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.graphics.drawable.toBitmap
 import com.example.domain.model.AppIconSize
 import com.example.domain.model.AppItem
 import com.example.ui.theme.AtlasBackground
-import com.example.ui.theme.AtlasBorder
-import com.example.ui.theme.AtlasCard
-import com.example.ui.theme.AtlasCardElevated
-import com.example.ui.theme.CrimsonElectric
 import com.example.ui.theme.GlassBorderBrush
+import com.example.ui.theme.GlassBorderSubtle
+import com.example.ui.theme.GlassBorderWhite
 import com.example.ui.theme.GlassCardBackgroundBrush
-import com.example.ui.theme.SoftSageGreen
 import com.example.ui.theme.TextMuted
 import com.example.ui.theme.TextPureWhite
 import com.example.ui.theme.TextSecondary
+import com.example.ui.viewmodel.LauncherUiState
 
 @Composable
 fun QuickDock(
@@ -75,20 +80,22 @@ fun QuickDock(
     hideLabels: Boolean = true,
     isEditMode: Boolean = false,
     onLaunchApp: (AppItem) -> Unit,
-    onTogglePin: (AppItem) -> Unit,
+    onRemoveApp: (AppItem) -> Unit,
     onOpenAppDrawer: () -> Unit,
+    /**
+     * Reports the dock's screen (root) bounds so the app drawer knows where to
+     * drop an app that is dragged out of the drawer onto the home screen.
+     */
+    onDockBounds: (Rect) -> Unit = {},
+    /** False inside the editor's phone mockup: show, never react. */
+    interactive: Boolean = true,
     modifier: Modifier = Modifier
 ) {
-    // 4 Essential Apps: Phone, Messages, Browser, Camera
-    val essentialApps = if (pinnedApps.isNotEmpty()) {
-        pinnedApps.take(4)
-    } else {
-        listOf(
-            AppItem("com.google.android.dialer", "Phone", null, isPinned = true),
-            AppItem("com.google.android.apps.messaging", "Messages", null, isPinned = true),
-            AppItem("com.android.chrome", "Browser", null, isPinned = true),
-            AppItem("com.google.android.GoogleCamera", "Camera", null, isPinned = true)
-        )
+    // The dock renders exactly the user's pinned list, in the user's order.
+    // There is deliberately no auto-generated fallback: the dock only changes
+    // when the user adds, removes or rearranges something.
+    val dockApps = remember(pinnedApps) {
+        pinnedApps.take(LauncherUiState.MAX_DOCK_APPS)
     }
 
     val appearance = com.example.ui.appearance.LocalAppearanceState.current
@@ -146,7 +153,7 @@ fun QuickDock(
             },
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        // Essential 4-5 apps inside a luxury floating frosted glass dock
+        // Essential apps inside a luxury floating frosted glass dock
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -154,32 +161,56 @@ fun QuickDock(
                 .background(GlassCardBackgroundBrush)
                 .border(1.dp, GlassBorderBrush, RoundedCornerShape(dockRadius))
                 .padding(horizontal = 14.dp, vertical = 8.dp)
+                .onGloballyPositioned {
+                    if (interactive) onDockBounds(it.boundsInRoot().inflate(16f))
+                }
+                .testTag("home_dock")
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                essentialApps.forEachIndexed { index, app ->
-                    val itemFloat = if (isEditMode) {
-                        if (index % 2 == 0) floatAnim else -floatAnim
-                    } else 0f
-                    val itemAngle = if (isEditMode) {
-                        if (index % 2 == 0) wiggleAngle else -wiggleAngle
-                    } else 0f
-
-                    DockItem(
-                        app = app,
-                        iconSize = iconSize,
-                        // Hide when EITHER the dock-label toggle is off OR the
-                        // global label switch is off (&& made the dock toggle a no-op).
-                        hideLabel = hideLabels || !appearance.iconShowLabels,
-                        floatOffsetY = itemFloat,
-                        wiggleRotationZ = itemAngle,
-                        cornerRadiusPercent = appearance.iconCornerRadiusPercent,
-                        onClick = { onLaunchApp(app) },
-                        onLongClick = { onTogglePin(app) }
+            if (dockApps.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable { onOpenAppDrawer() }
+                        .padding(vertical = 12.dp)
+                        .testTag("empty_dock_hint"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "Open the drawer and drag apps here to pin them",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextMuted,
+                        textAlign = TextAlign.Center
                     )
+                }
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    dockApps.forEachIndexed { index, app ->
+                        val itemFloat = if (isEditMode) {
+                            if (index % 2 == 0) floatAnim else -floatAnim
+                        } else 0f
+                        val itemAngle = if (isEditMode) {
+                            if (index % 2 == 0) wiggleAngle else -wiggleAngle
+                        } else 0f
+
+                        DockItem(
+                            app = app,
+                            iconSize = iconSize,
+                            // Hide when EITHER the dock-label toggle is off OR the
+                            // global label switch is off (&& made the dock toggle a no-op).
+                            hideLabel = hideLabels || !appearance.iconShowLabels,
+                            floatOffsetY = itemFloat,
+                            wiggleRotationZ = itemAngle,
+                            cornerRadiusPercent = appearance.iconCornerRadiusPercent,
+                            interactive = interactive,
+                            onClick = { onLaunchApp(app) },
+                            onRemove = { onRemoveApp(app) }
+                        )
+                    }
                 }
             }
         }
@@ -206,7 +237,6 @@ fun QuickDock(
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DockItem(
     app: AppItem,
@@ -215,8 +245,9 @@ private fun DockItem(
     floatOffsetY: Float = 0f,
     wiggleRotationZ: Float = 0f,
     cornerRadiusPercent: Int = 24,
+    interactive: Boolean = true,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onRemove: () -> Unit
 ) {
     // The dock MUST follow the editor's icon-size setting so the preview is
     // WYSIWYG with the home screen (drawer already uses iconSize.dpSize).
@@ -224,6 +255,8 @@ private fun DockItem(
     val boxSize = effectiveDp + 6.dp
     val iconDp = effectiveDp
     val shapeRadius = (cornerRadiusPercent * 0.26f).dp.coerceAtLeast(4.dp)
+
+    var menuOpen by remember(app.uniqueKey) { mutableStateOf(false) }
 
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -233,32 +266,43 @@ private fun DockItem(
                 rotationZ = wiggleRotationZ
             }
             .clip(RoundedCornerShape(18.dp))
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick
-            )
+            // Tap = open. Long press = "Remove from dock" menu — never an
+            // instant, accidental unpin. Handled in ONE gesture so a long press
+            // can't also trigger the launch on release.
+            .pointerInput(app.uniqueKey, interactive) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    var longPressed = false
+                    val upOrCancel = try {
+                        withTimeout(viewConfiguration.longPressTimeoutMillis) {
+                            waitForUpOrCancellation()
+                        }
+                    } catch (e: PointerEventTimeoutCancellationException) {
+                        longPressed = true
+                        null
+                    }
+                    if (longPressed) {
+                        if (interactive) {
+                            menuOpen = true
+                            // Swallow the rest of this gesture (no launch on release).
+                            waitForUpOrCancellation()
+                        }
+                    } else if (upOrCancel != null) {
+                        upOrCancel.consume()
+                        onClick()
+                    }
+                }
+            }
             .padding(horizontal = 4.dp, vertical = 2.dp)
             .testTag("dock_app_${app.uniqueKey}")
     ) {
-        val imageBitmap = remember(app.uniqueKey) {
-            com.example.util.AppIconCache.getOrConvert(app.uniqueKey, app.icon)
-        }
-
         Box(
             modifier = Modifier.size(boxSize),
             contentAlignment = Alignment.Center
         ) {
-            if (imageBitmap != null) {
-                // Authentic system app icon in original vibrant colors (No monochrome filter or card frame)
-                Image(
-                    bitmap = imageBitmap,
-                    contentDescription = app.name,
-                    modifier = Modifier
-                        .size(iconDp)
-                        .clip(RoundedCornerShape(shapeRadius))
-                )
-            } else {
-                // Authentic colorful Android app representation (Phone green, Messages blue, Browser, Camera)
+            if (!AtlasAppIcon(app, iconDp, RoundedCornerShape(shapeRadius))) {
+                // Authentic colorful Android app representation for apps whose
+                // drawable could not be read (Phone green, Messages blue, ...)
                 when {
                     app.name.contains("Phone", ignoreCase = true) -> {
                         Box(
@@ -270,12 +314,13 @@ private fun DockItem(
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.Phone,
-                                contentDescription = app.name,
+                                contentDescription = app.displayName,
                                 tint = Color.White,
                                 modifier = Modifier.size((iconDp.value * 0.5f).dp)
                             )
                         }
                     }
+
                     app.name.contains("Message", ignoreCase = true) -> {
                         Box(
                             modifier = Modifier
@@ -286,12 +331,13 @@ private fun DockItem(
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.Message,
-                                contentDescription = app.name,
+                                contentDescription = app.displayName,
                                 tint = Color.White,
                                 modifier = Modifier.size((iconDp.value * 0.5f).dp)
                             )
                         }
                     }
+
                     app.name.contains("Browser", ignoreCase = true) || app.name.contains("Chrome", ignoreCase = true) -> {
                         Box(
                             modifier = Modifier
@@ -302,12 +348,13 @@ private fun DockItem(
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.Language,
-                                contentDescription = app.name,
+                                contentDescription = app.displayName,
                                 tint = Color.White,
                                 modifier = Modifier.size((iconDp.value * 0.52f).dp)
                             )
                         }
                     }
+
                     app.name.contains("Camera", ignoreCase = true) -> {
                         Box(
                             modifier = Modifier
@@ -318,12 +365,13 @@ private fun DockItem(
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.CameraAlt,
-                                contentDescription = app.name,
+                                contentDescription = app.displayName,
                                 tint = Color.White,
                                 modifier = Modifier.size((iconDp.value * 0.5f).dp)
                             )
                         }
                     }
+
                     else -> {
                         Box(
                             modifier = Modifier
@@ -333,7 +381,7 @@ private fun DockItem(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = app.name.take(1).uppercase(),
+                                text = app.displayName.take(1).uppercase(),
                                 style = MaterialTheme.typography.titleMedium,
                                 color = Color.White,
                                 fontWeight = FontWeight.Bold
@@ -370,7 +418,7 @@ private fun DockItem(
             Spacer(modifier = Modifier.height(3.dp))
 
             Text(
-                text = app.name,
+                text = app.displayName,
                 style = MaterialTheme.typography.labelSmall,
                 color = TextSecondary,
                 maxLines = 1,
@@ -380,5 +428,58 @@ private fun DockItem(
             )
         }
     }
-}
 
+    DropdownMenu(
+        expanded = menuOpen,
+        onDismissRequest = { menuOpen = false },
+        modifier = Modifier
+            .border(1.dp, GlassBorderWhite, RoundedCornerShape(18.dp))
+            .testTag("dock_menu_${app.uniqueKey}")
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (!AtlasAppIcon(app, 26.dp, RoundedCornerShape(8.dp))) {
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF455A64)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = app.displayName.take(1).uppercase(),
+                        color = Color.White,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = app.displayName,
+                style = MaterialTheme.typography.labelMedium,
+                color = TextPureWhite,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        HorizontalDivider(color = GlassBorderSubtle)
+        DropdownMenuItem(
+            text = { Text("Remove from dock", color = TextPureWhite, fontSize = 14.sp) },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Outlined.RemoveCircleOutline,
+                    contentDescription = null,
+                    tint = TextSecondary,
+                    modifier = Modifier.size(18.dp)
+                )
+            },
+            onClick = {
+                menuOpen = false
+                onRemove()
+            }
+        )
+    }
+}
